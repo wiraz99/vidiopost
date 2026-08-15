@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8" />
+<title>Upload & Publish Video</title>
+<style>
+  body { font-family: sans-serif; max-width: 640px; margin: 40px auto; padding: 0 16px; }
+  textarea { width: 100%; min-height: 70px; margin-top: 4px; }
+  label { display: block; margin-top: 16px; font-weight: bold; }
+  .channel-row { margin: 6px 0; }
+  button { margin-top: 16px; padding: 8px 16px; cursor: pointer; }
+  #status { margin-top: 20px; white-space: pre-wrap; background: #f4f4f4; padding: 12px; }
+</style>
+</head>
+<body>
+  <h1>Upload Video & Publish</h1>
+
+  <label>1. Pilih video</label>
+  <input type="file" id="videoFile" accept="video/*" />
+  <button id="uploadBtn">Upload</button>
+  <div id="uploadResult"></div>
+
+  <label>2. Konteks video (buat brief singkat untuk Hermes)</label>
+  <textarea id="brief" placeholder="Contoh: video proses bikin Sale Pisang Granola, tunjukkan tekstur renyah"></textarea>
+
+  <label>3. Pilih channel tujuan</label>
+  <div id="channelList"></div>
+  <button id="captionBtn">Generate Caption</button>
+
+  <div id="captionBoxes"></div>
+
+  <button id="publishBtn" style="display:none;">Publish ke Channel Terpilih</button>
+
+  <div id="status"></div>
+
+<script>
+let uploadedUrl = null;
+let channels = [];
+
+async function loadChannels() {
+  const r = await fetch('/api/channels');
+  channels = await r.json();
+  const list = document.getElementById('channelList');
+  list.innerHTML = channels.map(c => `
+    <div class="channel-row">
+      <label style="font-weight:normal;">
+        <input type="checkbox" class="chk" value="${c.id}" data-platform="${c.platform}" checked />
+        ${c.label} (${c.platform})
+      </label>
+    </div>
+  `).join('');
+}
+loadChannels();
+
+document.getElementById('uploadBtn').onclick = async () => {
+  const file = document.getElementById('videoFile').files[0];
+  if (!file) return alert('Pilih file dulu');
+  const fd = new FormData();
+  fd.append('video', file);
+  document.getElementById('uploadResult').textContent = 'Uploading...';
+  const r = await fetch('/api/upload', { method: 'POST', body: fd });
+  const data = await r.json();
+  uploadedUrl = data.url;
+  document.getElementById('uploadResult').textContent = 'Uploaded: ' + uploadedUrl;
+};
+
+document.getElementById('captionBtn').onclick = async () => {
+  const brief = document.getElementById('brief').value;
+  const selected = [...document.querySelectorAll('.chk:checked')];
+  const platforms = [...new Set(selected.map(el => el.dataset.platform))];
+  if (!platforms.length) return alert('Pilih minimal 1 channel');
+
+  document.getElementById('captionBoxes').innerHTML = 'Generating...';
+  const r = await fetch('/api/caption', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ brief, platforms })
+  });
+  const data = await r.json();
+  const captions = data.captions || {};
+
+  document.getElementById('captionBoxes').innerHTML = selected.map(el => {
+    const platform = el.dataset.platform;
+    const text = captions[platform] || '';
+    return `
+      <label>Caption untuk ${el.parentElement.textContent.trim()}</label>
+      <textarea class="caption-edit" data-channel="${el.value}">${text}</textarea>
+    `;
+  }).join('');
+
+  document.getElementById('publishBtn').style.display = 'inline-block';
+};
+
+document.getElementById('publishBtn').onclick = async () => {
+  if (!uploadedUrl) return alert('Upload video dulu');
+  const captionsByChannelId = {};
+  document.querySelectorAll('.caption-edit').forEach(el => {
+    captionsByChannelId[el.dataset.channel] = el.value;
+  });
+  const channelIds = Object.keys(captionsByChannelId);
+
+  document.getElementById('status').textContent = 'Publishing...';
+  const r = await fetch('/api/publish', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ videoUrl: uploadedUrl, captionsByChannelId, channelIds })
+  });
+  const data = await r.json();
+  document.getElementById('status').textContent = JSON.stringify(data.results, null, 2);
+};
+</script>
+</body>
+</html>

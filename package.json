@@ -1,0 +1,16 @@
+{
+  "name": "video-post-app",
+  "version": "1.0.0",
+  "description": "Upload video, generate captions via Hermes, publish via Buffer API",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "multer": "^1.4.5-lts.1",
+    "dotenv": "^16.4.5",
+    "node-fetch": "^2.7.0"
+  }
+}
