@@ -27,6 +27,28 @@ const channels = JSON.parse(fs.readFileSync(path.join(__dirname, 'channels.json'
 
 if (!fs.existsSync(MEDIA_DIR)) fs.mkdirSync(MEDIA_DIR, { recursive: true });
 
+// Data persisten (riwayat + hitungan antrian). Default-nya ditaruh DI DALAM MEDIA_DIR
+// supaya ikut kebawa persistent volume Coolify dan tidak hilang tiap redeploy.
+const DATA_DIR = process.env.DATA_DIR || path.join(MEDIA_DIR, '_data');
+if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+const HISTORY_FILE = path.join(DATA_DIR, 'history.json');
+const QUEUE_FILE = path.join(DATA_DIR, 'queue.json');
+const QUEUE_LIMIT = Number(process.env.QUEUE_LIMIT || 10);
+
+function readJson(file, fallback) {
+  try {
+    return JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch {
+    return fallback;
+  }
+}
+
+function writeJson(file, data) {
+  const tmp = `${file}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(data, null, 2));
+  fs.renameSync(tmp, file);
+}
+
 // serve uploaded media publicly (this is the "public URL" Buffer's API requires)
 app.use('/media', express.static(MEDIA_DIR));
 app.use(express.static(path.join(__dirname, 'public')));
@@ -142,6 +164,110 @@ app.post('/api/publish', async (req, res) => {
     }
   }
   res.json({ results });
+});
+
+// ---------- Kuota antrian Buffer (endpoint baru) ----------
+// Buffer membatasi antrian 10 post per channel. Hitungan di sini adalah hitungan
+// LOKAL: naik tiap publish sukses lewat app ini. Karena post yang sudah tayang
+// keluar dari antrian di sisi Buffer, angka ini bisa disinkronkan manual lewat
+// POST /api/queue (lihat tombol "Sinkron" di UI).
+function readQueue() {
+  const stored = readJson(QUEUE_FILE, {});
+  const counts = {};
+  for (const c of channels) counts[c.id] = Number(stored[c.id]) || 0;
+  return counts;
+}
+
+app.get('/api/queue', (req, res) => {
+  res.json({ limit: QUEUE_LIMIT, counts: readQueue() });
+});
+
+// Body: { channelId, pending }  -> set nilai absolut
+//   atau { channelId, delta }   -> tambah/kurang
+app.post('/api/queue', (req, res) => {
+  const { channelId, pending, delta } = req.body || {};
+  if (!channels.some(c => c.id === channelId)) {
+    return res.status(400).json({ error: 'Unknown channelId' });
+  }
+  const counts = readQueue();
+  const next = pending !== undefined ? Number(pending) : counts[channelId] + Number(delta || 0);
+  if (!Number.isFinite(next)) return res.status(400).json({ error: 'Invalid value' });
+  counts[channelId] = Math.max(0, Math.round(next));
+  writeJson(QUEUE_FILE, counts);
+  res.json({ limit: QUEUE_LIMIT, counts });
+});
+
+// ---------- Riwayat publish (endpoint baru) ----------
+app.get('/api/history', (req, res) => {
+  const limit = Math.min(Number(req.query.limit) || 100, 500);
+  const entries = readJson(HISTORY_FILE, []);
+  res.json({ entries: entries.slice(0, limit) });
+});
+
+// Body: { filename, videoUrl, brief, results: [{ channelId, ok, error }] }
+app.post('/api/history', (req, res) => {
+  const { filename, videoUrl, brief, results } = req.body || {};
+  if (!Array.isArray(results)) return res.status(400).json({ error: 'results must be an array' });
+
+  const entry = {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    createdAt: new Date().toISOString(),
+    filename: filename || '',
+    videoUrl: videoUrl || '',
+    brief: brief || '',
+    results: results.map(r => {
+      const channel = channels.find(c => c.id === r.channelId);
+      return {
+        channelId: r.channelId,
+        label: channel?.label || r.label || r.channelId,
+        platform: channel?.platform || r.platform || '',
+        ok: !!r.ok,
+        error: r.ok ? null : (r.error || null),
+        at: new Date().toISOString()
+      };
+    })
+  };
+
+  const entries = readJson(HISTORY_FILE, []);
+  entries.unshift(entry);
+  writeJson(HISTORY_FILE, entries.slice(0, 500));
+
+  // Publish yang sukses menambah 1 slot antrian di channel tersebut.
+  const counts = readQueue();
+  for (const r of entry.results) if (r.ok) counts[r.channelId] = (counts[r.channelId] || 0) + 1;
+  writeJson(QUEUE_FILE, counts);
+
+  res.json({ entry, limit: QUEUE_LIMIT, counts });
+});
+
+// Update hasil 1 channel di entry yang sudah ada (dipakai setelah Retry).
+// Body: { channelId, ok, error }
+app.post('/api/history/:id/result', (req, res) => {
+  const { channelId, ok, error } = req.body || {};
+  const entries = readJson(HISTORY_FILE, []);
+  const entry = entries.find(e => e.id === req.params.id);
+  if (!entry) return res.status(404).json({ error: 'History entry not found' });
+
+  const channel = channels.find(c => c.id === channelId);
+  const existing = entry.results.find(r => r.channelId === channelId);
+  const wasOk = !!existing?.ok;
+  const patch = {
+    channelId,
+    label: channel?.label || channelId,
+    platform: channel?.platform || '',
+    ok: !!ok,
+    error: ok ? null : (error || null),
+    at: new Date().toISOString()
+  };
+  if (existing) Object.assign(existing, patch);
+  else entry.results.push(patch);
+  writeJson(HISTORY_FILE, entries);
+
+  const counts = readQueue();
+  if (!wasOk && ok) counts[channelId] = (counts[channelId] || 0) + 1;
+  writeJson(QUEUE_FILE, counts);
+
+  res.json({ entry, limit: QUEUE_LIMIT, counts });
 });
 
 app.listen(PORT, () => console.log(`video-post-app listening on port ${PORT}`));
