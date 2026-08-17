@@ -14,6 +14,7 @@ const ai = require('../lib/ai');
 const { buildRotation, QUEUE_LIMIT } = require('../lib/rotation');
 const { composePostText, lengthWarning } = require('../lib/compose');
 const { tagsFor } = require('./hashtags');
+const { resolveLink } = require('./links');
 const { asyncHandler, HttpError } = require('../lib/http');
 
 const router = express.Router();
@@ -187,7 +188,7 @@ router.post('/api/plan/:id/send/:index', asyncHandler(async (req, res) => {
     title: video.title,
     caption: video.captions?.[item.platform] || '',
     hashtags,
-    link: video.link || ''
+    link: resolveLink(video, item.platform)
   });
 
   if (!text.trim()) throw new HttpError(`Belum ada teks untuk ${item.channelLabel}. Generate caption dulu.`, 400);
@@ -230,7 +231,7 @@ router.get('/api/plan/:id/text/:index', asyncHandler(async (req, res) => {
     title: video?.title,
     caption: video?.captions?.[item.platform] || '',
     hashtags,
-    link: video?.link || ''
+    link: resolveLink(video, item.platform)
   });
   res.json({ text, length: text.length, warning: lengthWarning(item.platform, text) });
 }));

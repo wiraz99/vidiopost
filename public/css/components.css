@@ -222,7 +222,15 @@ input[type="checkbox"] { accent-color: var(--accent); }
 .vmeta a { color: var(--muted); text-decoration: none; display: inline-flex; align-items: center; gap: 4px; }
 .vmeta a:hover { color: var(--accent); }
 .vmeta .sep { color: var(--line-2); }
-.vactions { display: flex; gap: 2px; align-items: center; }
+.vactions { display: flex; gap: 2px; align-items: center; align-self: flex-start; }
+
+/* panel rincian di dalam baris video */
+.vdetail { margin-top: var(--s4); padding-top: var(--s4); border-top: 1px solid var(--line); }
+
+/* penanda "Tersimpan" — autosave tanpa umpan balik bikin ragu */
+.save-state { font-size: 11.5px; color: var(--muted); transition: color .2s; }
+.save-state.ok { color: var(--ok); }
+.save-state.bad { color: var(--bad); }
 .vnum {
   font-size: 11.5px; font-weight: 600; color: var(--muted);
   min-width: 24px; text-align: center; font-variant-numeric: tabular-nums;

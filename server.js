@@ -18,6 +18,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use(require('./routes/videos'));    // /api/upload, /api/videos, /api/caption
 app.use(require('./routes/channels'));  // /api/channels, /api/queue, /api/usage
 app.use(require('./routes/hashtags'));  // /api/hashtags
+app.use(require('./routes/links'));     // /api/links
 app.use(require('./routes/plan'));      // /api/plan
 app.use(require('./routes/history'));   // /api/publish, /api/history
 app.use(require('./routes/insights'));  // /api/insights

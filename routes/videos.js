@@ -59,7 +59,7 @@ router.get('/api/videos', (req, res) => {
 });
 
 // `link` = URL tujuan, dipakai Pinterest (lihat lib/compose.js).
-const EDITABLE = ['title', 'brief', 'link', 'captions', 'hashtagSetIds', 'status', 'order'];
+const EDITABLE = ['title', 'brief', 'link', 'linkId', 'captions', 'hashtagSetIds', 'status', 'order'];
 
 router.patch('/api/videos/:id', asyncHandler(async (req, res) => {
   const videos = readVideos();
@@ -120,6 +120,11 @@ router.post('/api/videos/:id/suggest-title', asyncHandler(async (req, res) => {
   writeVideos(videos);
 
   res.json({ titles });
+}));
+
+/** Uji koneksi ke Hermes. Dipakai tombol diagnosa di halaman Stok. */
+router.get('/api/ai/test', asyncHandler(async (req, res) => {
+  res.json(await ai.selfTest());
 }));
 
 // ---------- caption (kontrak lama dipertahankan) ----------

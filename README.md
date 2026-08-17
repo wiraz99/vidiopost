@@ -29,6 +29,7 @@ Aturannya satu baris, ada di `lib/rotation.js`:
 | **Stok Video** | Upload batch, isi judul, minta saran judul SEO dari AI, atur urutan (urutan = V1..Vn) |
 | **Jadwal** | Pilih video & channel → pratinjau tabel rotasi → simpan → generate caption → kirim per item |
 | **Hashtag** | Set hashtag bernama, bisa dibatasi per platform, plus saran dari AI |
+| **Tautan** | Bank link marketplace/WhatsApp/katalog, disisipkan otomatis ke post di platform yang menampilkan link |
 | **Insight** | Performa per konten, perbandingan platform, performa set hashtag |
 | **Riwayat** | Pengiriman yang sudah jalan + tombol ulangi per item yang gagal |
 
@@ -100,6 +101,8 @@ Tambahan:
 | `GET /api/queue` | antrian asli dari Buffer |
 | `GET /api/usage` | pemakaian kuota API hari ini |
 | `GET/POST/PATCH/DELETE /api/hashtags[/:id]` | set hashtag |
+| `GET/POST/PATCH/DELETE /api/links[/:id]` | bank tautan |
+| `GET /api/ai/test` | diagnosa koneksi Hermes |
 | `POST /api/hashtags/suggest` | saran hashtag dari AI |
 | `POST /api/plan/preview` | hitung rotasi tanpa menyimpan |
 | `POST /api/plan` · `GET /api/plan[/:id]` · `DELETE /api/plan/:id` | jadwal |
@@ -107,6 +110,24 @@ Tambahan:
 | `POST /api/plan/:id/send/:index` | kirim satu item (dipakai juga untuk retry) |
 | `GET /api/plan/:id/text/:index` | teks final sebelum dikirim |
 | `GET /api/insights` | metrics (di-cache) |
+
+## Kalau AI (caption / judul) tidak jalan
+
+Buka halaman Stok Video, ketuk `⌄` di salah satu video, tekan **Sarankan judul SEO**.
+Kalau gagal, akan muncul tombol **Cek koneksi AI** yang menampilkan alasan sebenarnya
+beserta setelan yang sedang dipakai. Bisa juga langsung:
+
+```
+curl https://<domain-kamu>/api/ai/test
+```
+
+Penyebab paling sering:
+
+| Gejala | Kemungkinan |
+|---|---|
+| HTTP 400 | `HERMES_MODEL` belum diisi — banyak endpoint mewajibkan nama model |
+| HTTP 401 / 403 | `HERMES_API_KEY` salah |
+| HTTP 404 | `HERMES_API_URL` kurang `/v1/chat/completions` |
 
 ## Batasan Buffer yang membentuk desain ini
 
@@ -124,10 +145,10 @@ Tambahan:
 
 | Tempat | Isi |
 |---|---|
-| `.env` | token, URL, `TIMEZONE`, `DATA_DIR`, batas rate limit, TTL cache metrics |
+| `.env` | token, URL, **`HERMES_MODEL`**, `TIMEZONE`, `DATA_DIR`, batas rate limit, TTL cache metrics |
 | `public/js/config.js` | batas karakter per platform, warna platform, menu |
 | `lib/rotation.js` | `QUEUE_LIMIT`, jam tayang bawaan per channel |
-| `lib/compose.js` | platform mana yang pakai hashtag / punya judul |
+| `lib/compose.js` | platform mana yang pakai hashtag / punya judul / disisipi link |
 | Halaman Hashtag | set hashtag (dulu hardcoded, sekarang dari web) |
 
 ## Catatan deploy (Coolify)

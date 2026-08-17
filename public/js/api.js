@@ -81,6 +81,15 @@ export const planCaption = (planId, videoId, brief) => post(`/api/plan/${planId}
 export const sendPlanItem = (planId, index) => post(`/api/plan/${planId}/send/${index}`);
 export const planItemText = (planId, index) => get(`/api/plan/${planId}/text/${index}`);
 
+// ---------- tautan ----------
+export const listLinks = () => get('/api/links');
+export const createLink = (body) => post('/api/links', body);
+export const updateLink = (id, body) => patch(`/api/links/${id}`, body);
+export const deleteLink = (id) => del(`/api/links/${id}`);
+
+// ---------- diagnosa AI ----------
+export const testAI = () => get('/api/ai/test');
+
 // ---------- riwayat & insight ----------
 export const getHistory = (limit = 100) => get(`/api/history?limit=${limit}`);
 export const getInsights = (refresh) => get(`/api/insights${refresh ? '?refresh=1' : ''}`);

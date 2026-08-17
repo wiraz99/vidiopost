@@ -9,6 +9,7 @@ const routes = {
   '/stok':    () => import('./pages/stok.js'),
   '/jadwal':  () => import('./pages/jadwal.js'),
   '/hashtag': () => import('./pages/hashtag.js'),
+  '/tautan':  () => import('./pages/tautan.js'),
   '/insight': () => import('./pages/insight.js'),
   '/riwayat': () => import('./pages/riwayat.js')
 };
@@ -31,7 +32,7 @@ function buildNav(container, isSidebar) {
     link.href = `#${item.path}`;
     link.dataset.path = item.path;
     link.append(icon(item.icon, isSidebar ? 17 : 20));
-    link.append(el('span', 'nav-label', item.label));
+    link.append(el('span', 'nav-label', isSidebar ? (item.full || item.label) : item.label));
     container.append(link);
   }
 }
@@ -41,8 +42,9 @@ function markActive(path) {
     link.classList.toggle('active', link.dataset.path === path);
   }
   const item = NAV.find((n) => n.path === path);
-  document.getElementById('pageTitle').textContent = item?.label || 'Video Post';
-  document.title = `${item?.label || 'Video Post'} — Arachynana`;
+  const title = item?.full || item?.label || 'Video Post';
+  document.getElementById('pageTitle').textContent = title;
+  document.title = `${title} — Arachynana`;
 }
 
 let lastPath = null;

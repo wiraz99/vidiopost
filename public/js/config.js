@@ -33,11 +33,12 @@ export const BRAND_NAME = 'Arachynana';
 export const QUEUE_LIMIT = 10;
 
 export const NAV = [
-  { path: '/stok',    label: 'Stok Video', icon: 'video' },
-  { path: '/jadwal',  label: 'Jadwal',     icon: 'calendar' },
-  { path: '/hashtag', label: 'Hashtag',    icon: 'hash' },
-  { path: '/insight', label: 'Insight',    icon: 'chart' },
-  { path: '/riwayat', label: 'Riwayat',    icon: 'clock' }
+  { path: '/stok',    label: 'Stok',    full: 'Stok Video', icon: 'video' },
+  { path: '/jadwal',  label: 'Jadwal',  full: 'Jadwal',     icon: 'calendar' },
+  { path: '/hashtag', label: 'Hashtag', full: 'Hashtag',    icon: 'hash' },
+  { path: '/tautan',  label: 'Tautan',  full: 'Tautan',     icon: 'link' },
+  { path: '/insight', label: 'Insight', full: 'Insight',    icon: 'chart' },
+  { path: '/riwayat', label: 'Riwayat', full: 'Riwayat',    icon: 'clock' }
 ];
 
 export const limitsFor = (platform) => PLATFORM_LIMITS[platform] || PLATFORM_LIMITS.default;
