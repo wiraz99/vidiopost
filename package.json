@@ -1,11 +1,13 @@
 {
   "name": "video-post-app",
   "version": "1.0.0",
-  "description": "Upload video, generate captions via Hermes, publish via Buffer API",
+  "description": "Stok video, jadwal rotasi ke 6 channel via Buffer, caption & hashtag dibantu AI",
   "main": "server.js",
   "type": "commonjs",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node --test test/",
+    "probe": "node scripts/probe-buffer.js"
   },
   "dependencies": {
     "express": "^4.19.2",

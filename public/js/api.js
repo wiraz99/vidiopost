@@ -1,30 +1,30 @@
-// Pembungkus tipis untuk semua endpoint server.
-// Endpoint lama (/api/upload, /api/channels, /api/caption, /api/publish) dipakai apa adanya.
+/** Pembungkus tipis semua endpoint server. Semua error dilempar sebagai Error biasa. */
 
-async function json(res) {
+async function parse(res) {
   let data = null;
   try {
     data = await res.json();
   } catch {
     // biarkan null
   }
-  if (!res.ok) {
-    throw new Error(data?.error || data?.detail || `HTTP ${res.status}`);
-  }
+  if (!res.ok) throw new Error(data?.error || data?.detail || `HTTP ${res.status}`);
   return data;
 }
 
-const post = (url, body) =>
+const get = (url) => fetch(url).then(parse);
+const send = (method) => (url, body) =>
   fetch(url, {
-    method: 'POST',
+    method,
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  }).then(json);
+    body: body === undefined ? undefined : JSON.stringify(body)
+  }).then(parse);
 
-export const getChannels = () => fetch('/api/channels').then(json);
+const post = send('POST');
+const patch = send('PATCH');
+const del = send('DELETE');
 
-// /api/upload menerima satu file per request (upload.single('video')),
-// jadi batch = beberapa request. onProgress dipanggil 0..1.
+// ---------- upload ----------
+/** /api/upload menerima satu file per request, jadi batch = beberapa request. */
 export function uploadVideo(file, onProgress) {
   return new Promise((resolve, reject) => {
     const fd = new FormData();
@@ -46,20 +46,41 @@ export function uploadVideo(file, onProgress) {
       else reject(new Error(data?.error || `Upload gagal (HTTP ${xhr.status})`));
     };
     xhr.onerror = () => reject(new Error('Koneksi terputus saat upload'));
-    xhr.onabort = () => reject(new Error('Upload dibatalkan'));
     xhr.send(fd);
   });
 }
 
-export const generateCaptions = (brief, platforms) => post('/api/caption', { brief, platforms });
+// ---------- video ----------
+export const listVideos = (status) => get(`/api/videos${status ? `?status=${status}` : ''}`);
+export const updateVideo = (id, patchBody) => patch(`/api/videos/${id}`, patchBody);
+export const deleteVideo = (id) => del(`/api/videos/${id}`);
+export const reorderVideos = (ids) => post('/api/videos/reorder', { ids });
+export const suggestTitle = (id, brief, count) => post(`/api/videos/${id}/suggest-title`, { brief, count });
 
-export const publish = (videoUrl, captionsByChannelId, channelIds) =>
-  post('/api/publish', { videoUrl, captionsByChannelId, channelIds });
+// ---------- channel & kuota ----------
+export const getChannels = () => get('/api/channels');
+export const getChannelsDetail = (refresh) => get(`/api/channels/detail${refresh ? '?refresh=1' : ''}`);
+export const getQueue = () => get('/api/queue');
+export const getUsage = () => get('/api/usage');
+export const getHealth = () => get('/api/health');
 
-// --- endpoint baru ---
-export const getQueue = () => fetch('/api/queue').then(json);
-export const setQueue = (channelId, pending) => post('/api/queue', { channelId, pending });
-export const getHistory = (limit = 100) => fetch(`/api/history?limit=${limit}`).then(json);
-export const addHistory = (payload) => post('/api/history', payload);
-export const patchHistoryResult = (id, channelId, ok, error) =>
-  post(`/api/history/${id}/result`, { channelId, ok, error });
+// ---------- hashtag ----------
+export const listHashtags = () => get('/api/hashtags');
+export const createHashtagSet = (body) => post('/api/hashtags', body);
+export const updateHashtagSet = (id, body) => patch(`/api/hashtags/${id}`, body);
+export const deleteHashtagSet = (id) => del(`/api/hashtags/${id}`);
+export const suggestHashtags = (brief, platform, count) => post('/api/hashtags/suggest', { brief, platform, count });
+
+// ---------- jadwal ----------
+export const previewPlan = (body) => post('/api/plan/preview', body);
+export const createPlan = (body) => post('/api/plan', body);
+export const listPlans = () => get('/api/plan');
+export const getPlan = (id) => get(`/api/plan/${id}`);
+export const deletePlan = (id) => del(`/api/plan/${id}`);
+export const planCaption = (planId, videoId, brief) => post(`/api/plan/${planId}/caption/${videoId}`, { brief });
+export const sendPlanItem = (planId, index) => post(`/api/plan/${planId}/send/${index}`);
+export const planItemText = (planId, index) => get(`/api/plan/${planId}/text/${index}`);
+
+// ---------- riwayat & insight ----------
+export const getHistory = (limit = 100) => get(`/api/history?limit=${limit}`);
+export const getInsights = (refresh) => get(`/api/insights${refresh ? '?refresh=1' : ''}`);

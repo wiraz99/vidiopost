@@ -5,59 +5,51 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <meta name="theme-color" content="#0f766e" />
 <title>Arachynana — Video Post</title>
-<link rel="stylesheet" href="/css/styles.css" />
+<link rel="stylesheet" href="/css/base.css" />
+<link rel="stylesheet" href="/css/components.css" />
 </head>
 <body>
 
-<header class="topbar">
-  <div class="wrap topbar-inner">
-    <span class="logo">A</span>
-    <div>
-      <h1>Video Post</h1>
-      <p class="sub">Arachynana · Sale Pisang Granola</p>
+<div class="shell">
+
+  <!-- ===== sidebar (desktop) ===== -->
+  <aside class="sidebar">
+    <div class="brand">
+      <span class="brand-mark">A</span>
+      <div class="brand-text">
+        <strong>Video Post</strong>
+        <small>Arachynana</small>
+      </div>
     </div>
+
+    <nav class="nav" id="sideNav"></nav>
+
+    <div class="sidebar-foot">
+      <div class="usage" id="usageBox" hidden>
+        <div class="usage-label">Kuota API Buffer hari ini</div>
+        <div class="usage-track"><div class="usage-fill" id="usageFill"></div></div>
+        <div class="usage-num" id="usageNum">—</div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ===== konten ===== -->
+  <div class="main-wrap">
+    <header class="topbar">
+      <span class="brand-mark sm">A</span>
+      <h1 id="pageTitle">Stok Video</h1>
+      <button class="icon-btn" id="reloadBtn" title="Muat ulang halaman ini" aria-label="Muat ulang">↻</button>
+    </header>
+
+    <main class="main" id="view"></main>
   </div>
-</header>
 
-<main class="wrap">
-  <p id="bootError" class="alert" hidden></p>
+  <!-- ===== bottom nav (mobile) ===== -->
+  <nav class="bottomnav" id="bottomNav"></nav>
 
-  <!-- 1. Upload batch -->
-  <section class="panel">
-    <h2>1 · Tambah video</h2>
-    <div id="dropzone" class="dropzone" tabindex="0" role="button"
-         aria-label="Pilih atau jatuhkan file video">
-      <div class="dz-icon">🎬</div>
-      <div class="dz-main">Ketuk untuk pilih video</div>
-      <div class="dz-sub">atau seret beberapa file ke sini sekaligus</div>
-    </div>
-    <input type="file" id="fileInput" accept="video/*" multiple hidden />
-  </section>
+</div>
 
-  <!-- 2. Kuota antrian -->
-  <section class="panel">
-    <h2>2 · Sisa antrian Buffer</h2>
-    <p class="hint">Batas Buffer 10 post per channel. Angka ini dihitung dari publish lewat app ini — ketuk <b>sinkron</b> untuk menyamakan dengan dashboard Buffer.</p>
-    <div id="queueBar" class="queue-bar"></div>
-  </section>
-
-  <!-- 3. Kartu video -->
-  <section class="panel">
-    <h2>3 · Video siap posting</h2>
-    <p id="emptyCards" class="empty">Belum ada video. Tambahkan dulu di atas.</p>
-    <div id="cards" class="cards"></div>
-  </section>
-
-  <!-- 4. Riwayat -->
-  <section class="panel">
-    <div class="panel-head">
-      <h2>4 · Riwayat publish</h2>
-      <button id="historyRefresh" class="btn btn-ghost btn-sm">↻ Muat ulang</button>
-    </div>
-    <p id="historyEmpty" class="empty" hidden>Belum ada riwayat publish.</p>
-    <div id="historyList" class="history"></div>
-  </section>
-</main>
+<div class="toast-wrap" id="toasts"></div>
 
 <script type="module" src="/js/app.js"></script>
 </body>

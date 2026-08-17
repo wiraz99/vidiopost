@@ -1,55 +1,19 @@
 // ============================================================
-//  SEMUA ANGKA & TEKS YANG SERING DIUBAH ADA DI FILE INI SAJA
+//  Setelan tampilan. Angka & aturan yang dipakai server ada di
+//  lib/compose.js dan lib/rotation.js — ubah di sana juga kalau perlu.
 // ============================================================
 
-// Batas antrian Buffer per channel. Dipakai untuk indikator "3/10 terpakai".
-// Kalau Buffer mengubah kebijakan, cukup ganti angka ini (dan QUEUE_LIMIT di server.js).
-export const QUEUE_LIMIT = 10;
-
-// Batas jumlah karakter caption per platform.
-// Angka ini SENGAJA taksiran / longgar — silakan sesuaikan kapan pun.
-// `soft` = mulai diberi warna kuning (peringatan), `hard` = dianggap kelewatan (merah).
+// Batas karakter per platform: `soft` = hitungan jadi kuning, `hard` = merah.
 export const PLATFORM_LIMITS = {
   instagram: { soft: 2000, hard: 2200 },
   tiktok:    { soft: 2000, hard: 2200 },
   threads:   { soft: 450,  hard: 500 },
   pinterest: { soft: 450,  hard: 500 },
   youtube:   { soft: 4500, hard: 5000 },
-  facebook:  { soft: 5000, hard: 63206 }, // Facebook praktis tidak ketat
+  facebook:  { soft: 5000, hard: 63206 },
   default:   { soft: 2000, hard: 2200 }
 };
 
-// Field tambahan selain caption, per platform.
-export const PLATFORM_FIELDS = {
-  youtube: {
-    title: { label: 'Judul video', placeholder: 'Judul YouTube...', max: 100 }
-  },
-  pinterest: {
-    title: { label: 'Judul pin', placeholder: 'Judul Pinterest...', max: 100 },
-    link:  { label: 'Link tujuan', placeholder: 'https://... (halaman produk / WA)', max: 2000 }
-  }
-};
-
-// ---- BANK HASHTAG BRAND -------------------------------------
-// Isi/ubah daftar di bawah ini sesukamu. Yang `default: true` otomatis
-// dicentang; user tetap bisa matikan per video lewat toggle di kartu.
-export const HASHTAG_BANK = [
-  { tag: '#SalePisangGranola', default: true },
-  { tag: '#Arachynana',        default: true },
-  { tag: '#CamilanSehat',      default: true }
-];
-
-// Hashtag ekstra khusus platform tertentu (opsional, boleh dikosongkan).
-export const PLATFORM_HASHTAGS = {
-  tiktok: ['#fyp'],
-  instagram: ['#reels']
-};
-
-// Platform mana yang benar-benar memakai hashtag. Pinterest & YouTube
-// lebih rapi tanpa tumpukan hashtag, jadi default-nya dimatikan.
-export const HASHTAG_PLATFORMS = ['instagram', 'tiktok', 'facebook', 'threads'];
-
-// Label & warna aksen tiap platform (dipakai di badge, preview, checkbox).
 export const PLATFORM_META = {
   instagram: { name: 'Instagram', color: '#d6266f', icon: 'IG' },
   tiktok:    { name: 'TikTok',    color: '#111827', icon: 'TT' },
@@ -60,9 +24,18 @@ export const PLATFORM_META = {
   default:   { name: 'Lainnya',   color: '#475569', icon: '??' }
 };
 
-// Nama brand — dipakai sebagai nama akun di preview.
 export const BRAND_NAME = 'Arachynana';
+
+// Batas antrian Buffer per channel (samakan dengan QUEUE_LIMIT di lib/rotation.js).
+export const QUEUE_LIMIT = 10;
+
+export const NAV = [
+  { path: '/stok',    label: 'Stok Video', icon: '🎬' },
+  { path: '/jadwal',  label: 'Jadwal',     icon: '🗓' },
+  { path: '/hashtag', label: 'Hashtag',    icon: '#' },
+  { path: '/insight', label: 'Insight',    icon: '📊' },
+  { path: '/riwayat', label: 'Riwayat',    icon: '🕘' }
+];
 
 export const limitsFor = (platform) => PLATFORM_LIMITS[platform] || PLATFORM_LIMITS.default;
 export const metaFor = (platform) => PLATFORM_META[platform] || PLATFORM_META.default;
-export const fieldsFor = (platform) => PLATFORM_FIELDS[platform] || {};
