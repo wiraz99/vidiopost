@@ -35,6 +35,8 @@ const PATHS = {
   arrowRight:  '<path d="M5 12h14M13 6l6 6-6 6"/>',
   arrowLeft:   '<path d="M19 12H5M11 18l-6-6 6-6"/>',
   dot:      '<circle cx="12" cy="12" r="2.5"/>',
+  logout:   '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/>',
+  lock:     '<rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>',
 
   // butir bertitik enam untuk pegangan geser
   grip:     '<circle cx="9" cy="5" r="1.4"/><circle cx="9" cy="12" r="1.4"/><circle cx="9" cy="19" r="1.4"/><circle cx="15" cy="5" r="1.4"/><circle cx="15" cy="12" r="1.4"/><circle cx="15" cy="19" r="1.4"/>'

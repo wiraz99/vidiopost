@@ -40,6 +40,9 @@ export async function render(container) {
 async function muat() {
   try {
     data = await api.getSettings();
+    // Status sesi datang dari endpoint terpisah; kalau gagal, panel keamanan
+    // tetap tampil, cuma tanpa nama penggunanya.
+    data.sesi = await api.authStatus().catch(() => null);
   } catch (err) {
     view.innerHTML = '';
     view.append(el('div', 'alert alert-bad', `Gagal memuat pengaturan: ${err.message}`));
@@ -63,6 +66,7 @@ function gambar() {
 
   page.append(panelUmum());
   page.append(panelChannel());
+  page.append(panelKeamanan());
   page.append(panelServer());
 
   view.append(page);
@@ -337,6 +341,82 @@ function boardPicker(channel, simpan) {
   reload.onclick = () => load(true);
   load(false);
   return wrap;
+}
+
+// ================= keamanan =================
+
+function panelKeamanan() {
+  const panel = html('section', 'panel', `
+    <div class="panel-title">Keamanan</div>
+    <p class="hint">
+      Halaman ini bisa mengirim post ke semua akun sosial mediamu, jadi aksesnya dikunci.
+    </p>
+  `);
+
+  panel.append(html('div', 'mrow', `
+    <span class="mlabel">Masuk sebagai</span>
+    <span class="srv-value">${escapeHtml(data.sesi?.user || '—')}</span>
+  `));
+
+  const form = el('div', 'field-row cols-2');
+  form.style.marginTop = 'var(--s4)';
+
+  const lama = kolomSandi('Kata sandi sekarang', 'current-password');
+  const baru = kolomSandi('Kata sandi baru', 'new-password');
+  const ulang = kolomSandi('Ulangi kata sandi baru', 'new-password');
+  form.append(lama.field, baru.field, ulang.field);
+  panel.append(form);
+
+  const ganti = button('btn btn-ghost', 'lock', 'Ganti kata sandi');
+  ganti.onclick = async (e) => {
+    if (baru.input.value !== ulang.input.value) return toast('Ulangan kata sandinya belum sama.', 'bad');
+    if (baru.input.value.length < 8) return toast('Kata sandi baru minimal 8 karakter.', 'bad');
+
+    const done = busy(e.currentTarget, 'Mengganti…');
+    try {
+      await api.changePassword({ lama: lama.input.value, baru: baru.input.value });
+      for (const k of [lama, baru, ulang]) k.input.value = '';
+      toast('Kata sandi diganti. Perangkat lain yang masih terbuka akan diminta masuk lagi.', 'ok');
+    } catch (err) {
+      toast(`Gagal: ${err.message}`, 'bad');
+    } finally {
+      done();
+    }
+  };
+  panel.append(ganti);
+
+  panel.append(el('p', 'note',
+    'Mengganti kata sandi membatalkan semua sesi yang masih terbuka di perangkat lain. ' +
+    'Sandi yang diganti di sini menimpa AUTH_PASSWORD dari environment, jadi tidak perlu deploy ulang.'));
+
+  panel.append(html('div', 'alert alert-info', `
+    <div>
+      <b>Folder video sengaja tetap terbuka.</b>
+      <div style="margin-top:5px">
+        Buffer mengunduh videonya dari <code>/media/…</code> tanpa login, jadi bagian itu tidak bisa
+        dikunci tanpa membuat semua pengiriman gagal. Yang melindunginya adalah nama file berisi
+        bagian acak, sehingga alamatnya tidak bisa ditebak.
+      </div>
+      <div style="margin-top:5px">
+        Video yang diupload <b>sebelum</b> versi ini masih memakai nama lama yang mudah ditebak.
+        Namanya tidak diganti otomatis karena post yang sudah terjadwal di Buffer menyimpan
+        alamat lamanya — menggantinya akan bikin gagal tayang. Hapus dan upload ulang kalau
+        video itu memang perlu dirahasiakan.
+      </div>
+    </div>
+  `));
+
+  return panel;
+}
+
+function kolomSandi(label, autocomplete) {
+  const field = el('div', 'field');
+  field.append(el('label', 'lbl', label));
+  const input = el('input');
+  input.type = 'password';
+  input.autocomplete = autocomplete;
+  field.append(input);
+  return { field, input };
 }
 
 // ================= server =================

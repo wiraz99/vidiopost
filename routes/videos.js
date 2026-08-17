@@ -3,6 +3,7 @@ const express = require('express');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const fetch = require('node-fetch');
 const store = require('../lib/store');
 const ai = require('../lib/ai');
@@ -11,11 +12,27 @@ const { asyncHandler, HttpError } = require('../lib/http');
 
 const router = express.Router();
 
+/**
+ * Nama file diberi bagian acak.
+ *
+ * Folder /media tidak bisa dikunci di balik login: Buffer mengunduh videonya
+ * dari luar tanpa membawa kredensial apa pun. Jadi satu-satunya perlindungan
+ * yang tersisa adalah alamat yang tidak bisa ditebak.
+ *
+ * Sebelumnya namanya cuma `<waktu>-<nama asli>`, yang berarti siapa pun yang
+ * tahu domainnya bisa menerka alamat video orang lain dengan mencoba beberapa
+ * stempel waktu.
+ *
+ * File LAMA sengaja tidak ikut diganti namanya: post yang sudah dijadwalkan di
+ * Buffer menyimpan URL lamanya, dan mengganti nama file akan membuat Buffer
+ * gagal mengunduhnya saat waktu tayang tiba.
+ */
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, store.MEDIA_DIR),
   filename: (req, file, cb) => {
-    const safeName = Date.now() + '-' + file.originalname.replace(/[^a-zA-Z0-9.\-_]/g, '_');
-    cb(null, safeName);
+    const acak = crypto.randomBytes(9).toString('base64url'); // 72 bit
+    const asli = file.originalname.replace(/[^a-zA-Z0-9.\-_]/g, '_').slice(-60);
+    cb(null, `${Date.now()}-${acak}-${asli}`);
   }
 });
 const upload = multer({ storage, limits: { fileSize: 500 * 1024 * 1024 } }); // 500MB

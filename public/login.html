@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#0f766e" />
+<meta name="robots" content="noindex, nofollow" />
+<title>Masuk — Arachynana</title>
+<link rel="stylesheet" href="/css/base.css" />
+<link rel="stylesheet" href="/css/components.css" />
+<style>
+  body { display: grid; place-items: center; min-height: 100vh; padding: var(--s4); }
+  .masuk { width: 100%; max-width: 370px; }
+  .masuk .brand { justify-content: center; padding: 0 0 var(--s6); }
+  .masuk .panel { padding: var(--s6); }
+</style>
+</head>
+<body>
+
+<main class="masuk">
+  <div class="brand">
+    <span class="brand-mark">A</span>
+    <div class="brand-text">
+      <strong>Video Post</strong>
+      <small>Arachynana</small>
+    </div>
+  </div>
+
+  <section class="panel" id="kotak">
+    <p class="empty">Memeriksa…</p>
+  </section>
+</main>
+
+<div class="toast-wrap" id="toasts"></div>
+
+<script type="module">
+const kotak = document.getElementById('kotak');
+
+const formMasuk = `
+  <div class="panel-title">Masuk</div>
+  <p class="hint">Halaman ini terkunci karena bisa mengirim post ke semua akun sosial mediamu.</p>
+  <form id="form">
+    <div class="field">
+      <label class="lbl" for="user">Nama pengguna</label>
+      <input type="text" id="user" name="username" autocomplete="username" value="admin" required />
+    </div>
+    <div class="field">
+      <label class="lbl" for="pass">Kata sandi</label>
+      <input type="password" id="pass" name="password" autocomplete="current-password" required autofocus />
+    </div>
+    <div id="pesan"></div>
+    <button class="btn btn-primary btn-block" id="tombol" type="submit" style="margin-top:var(--s4)">Masuk</button>
+  </form>`;
+
+const belumDiatur = `
+  <div class="alert alert-warn" style="margin-bottom:var(--s4)">
+    <div>
+      <b>Kata sandi belum diatur</b>
+      <div style="margin-top:5px">Selama ini belum diatur, tidak ada yang bisa masuk — termasuk kamu.</div>
+    </div>
+  </div>
+  <div class="panel-title">Cara mengaturnya</div>
+  <ol style="margin:0;padding-left:20px;font-size:14px;line-height:1.9">
+    <li>Buka Coolify → project ini → <b>Environment Variables</b></li>
+    <li>Tambah <code>AUTH_PASSWORD</code>, isi kata sandi yang kamu mau (minimal 8 karakter)</li>
+    <li>Boleh juga tambah <code>AUTH_USER</code> kalau tidak mau memakai <code>admin</code></li>
+    <li>Deploy ulang</li>
+  </ol>
+  <p class="note">Setelah bisa masuk, kata sandinya boleh diganti dari halaman Pengaturan tanpa deploy ulang lagi.</p>`;
+
+function pesan(teks, jenis = 'alert-bad') {
+  const kotakPesan = document.getElementById('pesan');
+  if (kotakPesan) kotakPesan.innerHTML = `<div class="alert ${jenis}" style="margin-top:var(--s3)">${teks}</div>`;
+}
+
+async function mulai() {
+  let status = { sudahDiatur: true };
+  try {
+    status = await (await fetch('/api/auth/status')).json();
+  } catch {
+    // biarkan; form tetap ditampilkan supaya tidak buntu total
+  }
+
+  if (!status.sudahDiatur) {
+    kotak.innerHTML = belumDiatur;
+    return;
+  }
+
+  kotak.innerHTML = formMasuk;
+
+  document.getElementById('form').onsubmit = async (e) => {
+    e.preventDefault();
+    const tombol = document.getElementById('tombol');
+    const asli = tombol.textContent;
+    tombol.disabled = true;
+    tombol.textContent = 'Memeriksa…';
+
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user: document.getElementById('user').value,
+          password: document.getElementById('pass').value
+        })
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        pesan(data.error || `Gagal masuk (HTTP ${res.status})`);
+        tombol.disabled = false;
+        tombol.textContent = asli;
+        return;
+      }
+      location.href = '/';
+    } catch (err) {
+      pesan(`Tidak bisa menghubungi server: ${err.message}`);
+      tombol.disabled = false;
+      tombol.textContent = asli;
+    }
+  };
+}
+
+mulai();
+</script>
+</body>
+</html>

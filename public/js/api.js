@@ -1,11 +1,25 @@
 /** Pembungkus tipis semua endpoint server. Semua error dilempar sebagai Error biasa. */
 
+/**
+ * Sesi habis di tengah jalan itu wajar (cookie kedaluwarsa, kata sandi
+ * diganti dari peramban lain, server direstart dengan rahasia baru).
+ * Kalau itu terjadi, jangan tampilkan pesan error yang membingungkan —
+ * langsung antar ke halaman masuk.
+ */
+function keLogin() {
+  if (location.pathname !== '/login') location.href = '/login';
+}
+
 async function parse(res) {
   let data = null;
   try {
     data = await res.json();
   } catch {
     // biarkan null
+  }
+  if (res.status === 401 || data?.perluLogin || data?.perluSetup) {
+    keLogin();
+    throw new Error(data?.error || 'Sesi habis, silakan masuk lagi.');
   }
   if (!res.ok) throw new Error(data?.error || data?.detail || `HTTP ${res.status}`);
   return data;
@@ -41,6 +55,11 @@ export function uploadVideo(file, onProgress) {
         data = JSON.parse(xhr.responseText);
       } catch {
         // biarkan null
+      }
+      if (xhr.status === 401) {
+        keLogin();
+        reject(new Error('Sesi habis, silakan masuk lagi.'));
+        return;
       }
       if (xhr.status >= 200 && xhr.status < 300 && data?.url) resolve(data);
       else reject(new Error(data?.error || `Upload gagal (HTTP ${xhr.status})`));
@@ -103,6 +122,11 @@ export const saveSettings = (body) => patch('/api/settings', body);
 export const testAI = () => get('/api/ai/test');
 export const getDiagnostics = (refresh) => get(`/api/diagnostics${refresh ? '?refresh=1' : ''}`);
 export const checkMedia = (id) => get(`/api/media/check${id ? `?id=${id}` : ''}`);
+
+// ---------- sesi ----------
+export const authStatus = () => get('/api/auth/status');
+export const logout = () => post('/api/auth/logout');
+export const changePassword = (body) => post('/api/auth/password', body);
 
 // ---------- riwayat & insight ----------
 export const getHistory = (limit = 100) => get(`/api/history?limit=${limit}`);

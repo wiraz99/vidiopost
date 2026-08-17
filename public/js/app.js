@@ -25,6 +25,16 @@ async function refreshUsage() {
   }
 }
 
+// ---------- keluar ----------
+document.getElementById('logoutBtn').onclick = async () => {
+  try {
+    await api.logout();
+  } catch {
+    // Gagal pun tetap diantar ke halaman masuk — cookienya sudah tidak dipakai.
+  }
+  location.href = '/login';
+};
+
 refreshUsage();
 // Angkanya berubah tiap kali ada panggilan ke Buffer, jadi disegarkan berkala.
 setInterval(refreshUsage, 20000);
