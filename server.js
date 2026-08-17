@@ -3,6 +3,7 @@ const express = require('express');
 const path = require('path');
 
 const store = require('./lib/store');
+const media = require('./lib/media');
 const { errorHandler } = require('./lib/http');
 
 const app = express();
@@ -27,6 +28,8 @@ app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
     dataDir: store.DATA_DIR,
+    publicBaseUrl: media.PUBLIC_BASE_URL,
+    publicBaseUrlLooksLocal: media.baseUrlLooksLocal(),
     hermes: !!process.env.HERMES_API_URL,
     bufferA: !!process.env.BUFFER_TOKEN_A,
     bufferB: !!process.env.BUFFER_TOKEN_B,

@@ -157,7 +157,7 @@ function buildRow(video, index) {
   attachDrag(row, handle);
 
   const num = el('span', 'vnum', `V${index + 1}`);
-  const thumb = videoThumb(video.url);
+  const thumb = videoThumb(video.path || video.url);
   const body = el('div', 'vbody');
 
   // --- penanda status simpan, dipakai semua field di kartu ini ---
@@ -190,13 +190,18 @@ function buildRow(video, index) {
   meta.append(el('span', null, formatBytes(video.size)));
   meta.append(el('span', 'sep', '·'));
   const fileLink = el('a');
-  fileLink.href = video.url;
+  fileLink.href = video.path || video.url;
   fileLink.target = '_blank';
   fileLink.rel = 'noopener';
   fileLink.append(icon('link', 13), el('span', null, 'video'));
   meta.append(fileLink);
   meta.append(el('span', 'sep', '·'));
   meta.append(el('span', `badge badge-${video.status}`, STATUS_LABEL[video.status] || video.status));
+  if (video.exists === false) {
+    const gone = el('span', 'badge badge-error', 'file hilang');
+    gone.title = 'Filenya tidak ada lagi di server — kemungkinan volume penyimpanan tidak ter-mount';
+    meta.append(gone);
+  }
   meta.append(saveState);
   body.append(meta);
 

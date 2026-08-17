@@ -77,7 +77,7 @@ function loadThumb(video) {
     // Video tidak bisa diambil (URL salah / file hilang) — tampilkan penanda,
     // jangan biarkan kotak hitam tanpa keterangan.
     const fallback = el('div', video.className + ' thumb-fallback');
-    fallback.title = 'Video tidak bisa dimuat — cek PUBLIC_BASE_URL';
+    fallback.title = 'Video tidak bisa dimuat dari server';
     fallback.innerHTML = iconSvg('alert', 16);
     video.replaceWith(fallback);
   }, { once: true });

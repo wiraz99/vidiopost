@@ -5,11 +5,10 @@ const path = require('path');
 const fs = require('fs');
 const store = require('../lib/store');
 const ai = require('../lib/ai');
+const media = require('../lib/media');
 const { asyncHandler, HttpError } = require('../lib/http');
 
 const router = express.Router();
-
-const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, store.MEDIA_DIR),
@@ -29,12 +28,10 @@ const writeVideos = (v) => store.write('videos', v);
 router.post('/api/upload', upload.single('video'), asyncHandler(async (req, res) => {
   if (!req.file) throw new HttpError('No file uploaded', 400);
 
-  const url = `${PUBLIC_BASE_URL}/media/${req.file.filename}`;
   const video = {
     id: store.uid('vid'),
     filename: req.file.filename,
     originalName: req.file.originalname,
-    url,
     size: req.file.size,
     title: '',
     brief: '',
@@ -48,14 +45,16 @@ router.post('/api/upload', upload.single('video'), asyncHandler(async (req, res)
   videos.unshift(video);
   writeVideos(videos);
 
-  res.json({ url, filename: req.file.filename, video });
+  // Kontrak lama dipertahankan: { url, filename } tetap di level atas.
+  res.json({ url: media.publicUrl(video.filename), filename: req.file.filename, video: media.decorate(video) });
 }));
 
 // ---------- daftar & ubah ----------
 router.get('/api/videos', (req, res) => {
   const { status } = req.query;
   const videos = readVideos();
-  res.json({ videos: status ? videos.filter((v) => v.status === status) : videos });
+  const list = status ? videos.filter((v) => v.status === status) : videos;
+  res.json({ videos: list.map(media.decorate) });
 });
 
 // `link` = URL tujuan, dipakai Pinterest (lihat lib/compose.js).
@@ -71,7 +70,7 @@ router.patch('/api/videos/:id', asyncHandler(async (req, res) => {
   }
   video.updatedAt = new Date().toISOString();
   writeVideos(videos);
-  res.json({ video });
+  res.json({ video: media.decorate(video) });
 }));
 
 router.delete('/api/videos/:id', asyncHandler(async (req, res) => {

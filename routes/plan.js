@@ -15,6 +15,7 @@ const { buildRotation, QUEUE_LIMIT } = require('../lib/rotation');
 const { composePostText, lengthWarning } = require('../lib/compose');
 const { tagsFor } = require('./hashtags');
 const { resolveLink } = require('./links');
+const media = require('../lib/media');
 const { asyncHandler, HttpError } = require('../lib/http');
 
 const router = express.Router();
@@ -198,7 +199,7 @@ router.post('/api/plan/:id/send/:index', asyncHandler(async (req, res) => {
       account: item.account,
       channelId: item.channelId,
       text,
-      videoUrl: video.url,
+      videoUrl: media.publicUrl(video.filename),
       dueAt: item.dueAt,
       mode: 'customScheduled'
     });
