@@ -1,6 +1,6 @@
 /** Riwayat: semua item jadwal yang sudah dikirim, plus riwayat publish lama. */
 import * as api from '../api.js';
-import { el, html, toast, busy, formatDate, formatDayLabel, platformDot, sleep } from '../utils.js';
+import { el, html, toast, busy, formatDate, formatDayLabel, platformDot, sleep, icon, iconSvg, button } from '../utils.js';
 
 export async function render(view) {
   const wrap = el('div', 'stack');
@@ -43,10 +43,8 @@ export async function render(view) {
 }
 
 function buildPlanRow(plan) {
-  const box = el('div', 'panel');
-  box.style.boxShadow = 'none';
-  box.style.background = 'var(--surface-2)';
-  box.style.marginBottom = '10px';
+  const box = el('div', 'subcard');
+  box.style.marginBottom = 'var(--s2)';
 
   const head = el('div', 'row-between');
   const info = el('div');
@@ -101,7 +99,7 @@ async function loadFailed(container, planId) {
 function buildFailedRow(item, plan, container) {
   const row = el('div', 'senditem err');
   row.dataset.index = item.index;
-  row.append(el('span', null, '✕'));
+  row.append(html('span', 'state', iconSvg('x', 16)));
 
   const body = el('div', 'grow');
   body.append(el('div', 'truncate', `${item.channelLabel} — ${item.videoTitle}`));
@@ -111,7 +109,7 @@ function buildFailedRow(item, plan, container) {
 
   row.append(el('span', 'badge badge-error', 'gagal'));
 
-  const retry = el('button', 'btn btn-ghost btn-sm', '↻ Ulangi');
+  const retry = button('btn btn-ghost btn-sm', 'refresh', 'Ulangi');
   retry.onclick = async () => {
     const done = busy(retry, 'Mengirim…');
     try {
@@ -142,9 +140,7 @@ function buildHistoryRow(entry) {
   const okCount = entry.results.filter((r) => r.ok).length;
   const total = entry.results.length;
 
-  const box = el('div', 'panel');
-  box.style.boxShadow = 'none';
-  box.style.background = 'var(--surface-2)';
+  const box = el('div', 'subcard');
 
   const head = el('div', 'row-between');
   head.append(el('div', 'truncate', entry.filename || '(tanpa nama)'));
@@ -156,7 +152,7 @@ function buildHistoryRow(entry) {
   for (const r of entry.results) {
     const chip = el('span', 'chip');
     chip.append(platformDot(r.platform));
-    chip.append(el('span', null, `${r.ok ? '✓' : '✕'} ${r.label}`));
+    chip.append(icon(r.ok ? 'check' : 'x', 13), el('span', null, r.label));
     if (!r.ok && r.error) chip.title = r.error;
     tags.append(chip);
   }

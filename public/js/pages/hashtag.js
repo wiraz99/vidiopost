@@ -1,6 +1,6 @@
 /** Kelola set hashtag: buat, edit, hapus, tandai default, minta saran AI. */
 import * as api from '../api.js';
-import { el, html, toast, busy, escapeHtml } from '../utils.js';
+import { el, html, toast, busy, escapeHtml, iconSvg, button, iconButton } from '../utils.js';
 import { PLATFORM_META } from '../config.js';
 
 const PLATFORMS = Object.keys(PLATFORM_META).filter((p) => p !== 'default');
@@ -19,7 +19,7 @@ export async function render(view) {
       Pinterest &amp; YouTube memang tidak diberi hashtag.
     </p>
     <div class="stack" id="setList"></div>
-    <button class="btn btn-primary btn-block" id="addSet" style="margin-top:12px">+ Set baru</button>
+    <button class="btn btn-primary btn-block" id="addSet" style="margin-top:var(--s4)">${iconSvg('plus', 16)} Set baru</button>
   `));
 
   wrap.append(buildSuggestPanel());
@@ -51,9 +51,7 @@ function paint() {
 }
 
 function buildSetCard(set) {
-  const card = el('div', 'panel');
-  card.style.boxShadow = 'none';
-  card.style.background = 'var(--surface-2)';
+  const card = el('div', 'subcard');
 
   // --- baris judul ---
   const head = el('div', 'row-between');
@@ -71,8 +69,7 @@ function buildSetCard(set) {
   defaultCb.checked = !!set.isDefault;
   defaultChip.append(defaultCb, el('span', null, 'default'));
 
-  const delBtn = el('button', 'icon-btn', '🗑');
-  delBtn.title = 'Hapus set';
+  const delBtn = iconButton('trash', 'Hapus set', 'icon-btn danger');
   delBtn.onclick = async () => {
     if (!confirm(`Hapus set "${set.name}"?`)) return;
     try {
@@ -122,7 +119,7 @@ function buildSetCard(set) {
   card.append(platField);
 
   // --- simpan ---
-  const saveBtn = el('button', 'btn btn-ghost btn-sm', 'Simpan perubahan');
+  const saveBtn = button('btn btn-ghost btn-sm', 'check', 'Simpan perubahan');
   saveBtn.onclick = async () => {
     const done = busy(saveBtn, 'Menyimpan…');
     try {
@@ -186,7 +183,7 @@ function buildSuggestPanel() {
         <input type="number" id="sugCount" min="5" max="30" value="15" />
       </div>
     </div>
-    <button class="btn btn-primary" id="sugBtn">✨ Minta saran</button>
+    <button class="btn btn-primary" id="sugBtn">${iconSvg('sparkles', 16)} Minta saran</button>
     <div id="sugResult" style="margin-top:12px"></div>
   `);
 

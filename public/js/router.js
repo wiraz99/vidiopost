@@ -3,7 +3,7 @@
  * pertama kali dibuka, dan mengekspor `render(container)`.
  */
 import { NAV } from './config.js';
-import { el, qsa } from './utils.js';
+import { el, qsa, icon } from './utils.js';
 
 const routes = {
   '/stok':    () => import('./pages/stok.js'),
@@ -24,15 +24,14 @@ export function currentRoute() {
 
 export const navigate = (path) => { location.hash = path; };
 
-function buildNav(container, withLabel) {
+function buildNav(container, isSidebar) {
   container.innerHTML = '';
   for (const item of NAV) {
     const link = el('a');
     link.href = `#${item.path}`;
     link.dataset.path = item.path;
-    link.append(el('span', 'nav-icon', item.icon));
+    link.append(icon(item.icon, isSidebar ? 17 : 20));
     link.append(el('span', 'nav-label', item.label));
-    if (!withLabel) link.querySelector('.nav-label').classList.add('nav-label-sm');
     container.append(link);
   }
 }

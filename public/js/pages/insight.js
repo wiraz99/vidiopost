@@ -6,7 +6,7 @@
  * ditampilkan adalah penjelasan kenapa — bukan grafik kosong.
  */
 import * as api from '../api.js';
-import { el, html, toast, busy, formatDate, formatNumber, platformDot, escapeHtml } from '../utils.js';
+import { el, html, toast, busy, formatDate, formatNumber, platformDot, escapeHtml, iconSvg, button } from '../utils.js';
 
 export async function render(view) {
   const wrap = el('div', 'stack');
@@ -42,7 +42,7 @@ async function load(view, refresh) {
   page.append(html('section', 'panel', `
     <div class="row-between" style="margin-bottom:10px">
       <div class="panel-title" style="margin:0">Ringkasan</div>
-      <button class="btn btn-ghost btn-sm" id="refreshBtn">↻ Ambil data terbaru</button>
+      <button class="btn btn-ghost btn-sm" id="refreshBtn">${iconSvg('refresh', 14)} Ambil data terbaru</button>
     </div>
     <div class="stat-grid">
       <div class="stat">
@@ -188,7 +188,7 @@ function buildUnavailable(data, view) {
     `));
   }
 
-  const retry = el('button', 'btn btn-ghost', '↻ Coba ambil lagi');
+  const retry = button('btn btn-ghost', 'refresh', 'Coba ambil lagi');
   retry.onclick = async (e) => {
     const done = busy(e.target, 'Mengambil…');
     try {

@@ -1,4 +1,7 @@
 import { metaFor } from './config.js';
+import { icon, iconSvg } from './icons.js';
+
+export { icon, iconSvg };
 
 /** Bikin elemen: el('div', 'kelas', 'teks') */
 export function el(tag, className, text) {
@@ -21,13 +24,34 @@ export const escapeHtml = (s = '') =>
 export const qs = (sel, root = document) => root.querySelector(sel);
 export const qsa = (sel, root = document) => [...root.querySelectorAll(sel)];
 
-/** Lencana bulat kecil berisi inisial platform. */
+/** Monogram platform: kotak membulat bernuansa lembut, bukan blok warna penuh. */
 export function platformDot(platform) {
   const meta = metaFor(platform);
   const dot = el('span', 'pdot', meta.icon);
-  dot.style.background = meta.color;
+  dot.style.background = meta.soft;
+  dot.style.color = meta.ink;
+  dot.style.borderColor = meta.ink + '26'; // ~15% opacity
   dot.title = meta.name;
   return dot;
+}
+
+/** Tombol dengan ikon di kiri teks. */
+export function button(className, iconName, label) {
+  const btn = el('button', className);
+  btn.type = 'button';
+  if (iconName) btn.append(icon(iconName, className.includes('btn-sm') ? 14 : 16));
+  if (label) btn.append(el('span', null, label));
+  return btn;
+}
+
+/** Tombol yang isinya cuma ikon. */
+export function iconButton(iconName, title, className = 'icon-btn') {
+  const btn = el('button', className);
+  btn.type = 'button';
+  btn.title = title;
+  btn.setAttribute('aria-label', title);
+  btn.append(icon(iconName, 16));
+  return btn;
 }
 
 export function formatBytes(bytes) {
@@ -64,7 +88,9 @@ export const formatNumber = (n) => Number(n || 0).toLocaleString('id-ID');
 export function toast(message, kind = '') {
   const wrap = document.getElementById('toasts');
   if (!wrap) return;
-  const node = el('div', `toast ${kind}`, message);
+  const node = el('div', `toast ${kind}`);
+  if (kind) node.append(icon(kind === 'ok' ? 'check' : 'alert', 15));
+  node.append(el('span', null, message));
   wrap.append(node);
   setTimeout(() => {
     node.style.transition = 'opacity .3s';

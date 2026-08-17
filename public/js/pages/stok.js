@@ -3,7 +3,10 @@
  * URUTAN DI HALAMAN INI PENTING: itulah urutan V1..Vn yang dipakai rotasi jadwal.
  */
 import * as api from '../api.js';
-import { el, html, toast, busy, formatBytes, debounce, escapeHtml } from '../utils.js';
+import {
+  el, html, toast, busy, formatBytes, debounce, escapeHtml,
+  icon, iconSvg, button, iconButton
+} from '../utils.js';
 
 let videos = [];
 let listEl = null;
@@ -13,24 +16,25 @@ export async function render(view) {
 
   // ---------- upload ----------
   const uploadPanel = html('section', 'panel', `
-    <div class="panel-title">Tambah video</div>
     <div class="dropzone" id="dz" tabindex="0" role="button" aria-label="Pilih atau jatuhkan video">
-      <div class="dz-icon">🎬</div>
+      ${iconSvg('upload', 26)}
       <div class="dz-main">Ketuk untuk pilih video</div>
       <div class="dz-sub">atau seret beberapa file ke sini sekaligus</div>
     </div>
     <input type="file" id="fileInput" accept="video/*" multiple hidden />
-    <div id="uploadQueue" class="stack" style="margin-top:12px"></div>
+    <div id="uploadQueue" class="vlist" style="margin-top:var(--s3)"></div>
   `);
   wrap.append(uploadPanel);
 
   // ---------- daftar ----------
   const listPanel = html('section', 'panel', `
-    <div class="row-between" style="margin-bottom:10px">
-      <div class="panel-title" style="margin:0">Stok video</div>
-      <span class="muted" id="stokCount"></span>
+    <div class="panel-head">
+      <div>
+        <div class="panel-title">Stok video</div>
+        <p class="muted">Urutan menentukan rotasi jadwal — yang paling atas jadi V1.</p>
+      </div>
+      <span class="pill-count" id="stokCount">0</span>
     </div>
-    <p class="hint">Urutannya menentukan rotasi jadwal: video paling atas jadi V1. Seret ikon ⠿ untuk menggeser.</p>
     <div class="vlist" id="vlist"></div>
   `);
   wrap.append(listPanel);
@@ -71,26 +75,26 @@ function setupUpload(root) {
     // Berurutan, bukan paralel: upload video besar barengan bikin koneksi HP tercekik.
     for (const file of files) {
       const row = html('div', 'vrow', `
-        <span class="vhandle">⬆</span>
-        <div class="vthumb" style="display:grid;place-items:center;color:#94a3b8;font-size:11px">…</div>
+        <span class="vhandle">${iconSvg('upload', 16)}</span>
+        <div class="vthumb"></div>
         <div class="vbody">
           <div class="vtitle truncate">${escapeHtml(file.name)}</div>
-          <div class="vmeta">${formatBytes(file.size)} · mengupload…</div>
+          <div class="vmeta">${formatBytes(file.size)}<span class="sep">·</span><span class="state">mengupload…</span></div>
           <div class="progress"><div class="bar"></div></div>
         </div>
         <span></span>
       `);
       queue.append(row);
       const bar = row.querySelector('.bar');
-      const meta = row.querySelector('.vmeta');
+      const state = row.querySelector('.state');
 
       try {
         await api.uploadVideo(file, (p) => { bar.style.width = `${Math.round(p * 100)}%`; });
-        meta.textContent = 'selesai';
         row.remove();
       } catch (err) {
         row.querySelector('.progress').remove();
-        meta.innerHTML = `<span style="color:#b91c1c">Gagal: ${escapeHtml(err.message)}</span>`;
+        state.textContent = `Gagal: ${err.message}`;
+        state.style.color = 'var(--bad)';
       }
     }
 
@@ -119,28 +123,29 @@ function setupUpload(root) {
 
 // ================= daftar =================
 
+const STATUS_LABEL = { stock: 'stok', scheduled: 'terjadwal', done: 'selesai' };
+
 function paintList() {
   listEl.innerHTML = '';
-  document.getElementById('stokCount').textContent =
-    `${videos.length} video · ${videos.filter((v) => v.status === 'stock').length} siap dijadwalkan`;
+  const stock = videos.filter((v) => v.status === 'stock').length;
+  document.getElementById('stokCount').textContent = `${videos.length} video · ${stock} siap`;
 
   if (!videos.length) {
     listEl.append(el('p', 'empty', 'Belum ada video. Tambahkan di atas.'));
     return;
   }
-
   videos.forEach((video, index) => listEl.append(buildRow(video, index)));
 }
 
 function buildRow(video, index) {
-  const row = el('div', 'vrow');
-  row.draggable = false;
+  const row = el('div', 'vrow vrow-num');
   row.dataset.id = video.id;
 
   // --- pegangan geser ---
-  const handle = el('span', 'vhandle', '⠿');
+  const handle = el('span', 'vhandle');
   handle.title = 'Seret untuk menggeser urutan';
   handle.draggable = true;
+  handle.append(icon('grip', 16));
   attachDrag(row, handle);
 
   const num = el('span', 'vnum', `V${index + 1}`);
@@ -172,25 +177,29 @@ function buildRow(video, index) {
 
   const meta = el('div', 'vmeta');
   meta.append(el('span', null, formatBytes(video.size)));
-  const link = el('a', null, 'link video');
+  meta.append(el('span', 'sep', '·'));
+  const link = el('a');
   link.href = video.url;
   link.target = '_blank';
   link.rel = 'noopener';
+  link.append(icon('link', 13), el('span', null, 'video'));
   meta.append(link);
-  const badge = el('span', `badge badge-${video.status}`, {
-    stock: 'stok', scheduled: 'terjadwal', done: 'selesai'
-  }[video.status] || video.status);
-  meta.append(badge);
+  meta.append(el('span', 'sep', '·'));
+  meta.append(el('span', `badge badge-${video.status}`, STATUS_LABEL[video.status] || video.status));
   body.append(meta);
 
-  // --- panel brief + saran judul ---
-  const detail = el('div', 'stack');
+  // --- panel brief + saran judul + link ---
+  const detail = el('div');
   detail.hidden = true;
-  detail.style.marginTop = '10px';
+  detail.style.marginTop = 'var(--s4)';
+  detail.style.paddingTop = 'var(--s4)';
+  detail.style.borderTop = '1px solid var(--line)';
 
+  const briefField = el('div', 'field');
+  briefField.append(el('label', 'lbl', 'Brief isi video'));
   const brief = el('textarea');
   brief.rows = 2;
-  brief.placeholder = 'Brief singkat isi video — dipakai AI untuk bikin judul & caption';
+  brief.placeholder = 'Dipakai AI untuk membuat judul & caption';
   brief.value = video.brief || '';
   const saveBrief = debounce(async () => {
     try {
@@ -201,15 +210,19 @@ function buildRow(video, index) {
     }
   }, 600);
   brief.oninput = saveBrief;
-  detail.append(brief);
+  briefField.append(brief);
+  detail.append(briefField);
 
-  const suggestBtn = el('button', 'btn btn-ghost btn-sm', '✨ Sarankan judul SEO');
-  const suggestions = el('div', 'chips');
+  const suggestBtn = button('btn btn-ghost btn-sm', 'sparkles', 'Sarankan judul SEO');
+  const suggestions = el('div');
 
   const showSuggestions = (titles) => {
     suggestions.innerHTML = '';
     if (!titles?.length) return;
-    suggestions.append(el('div', 'muted', 'Ketuk salah satu untuk dipakai:'));
+    suggestions.style.marginTop = 'var(--s3)';
+    suggestions.append(el('p', 'muted', 'Ketuk salah satu untuk dipakai:'));
+    const chips = el('div', 'chips');
+    chips.style.marginTop = '6px';
     for (const t of titles) {
       const chip = el('button', 'chip', t);
       chip.type = 'button';
@@ -223,8 +236,9 @@ function buildRow(video, index) {
           toast(`Gagal menyimpan judul: ${err.message}`, 'bad');
         }
       };
-      suggestions.append(chip);
+      chips.append(chip);
     }
+    suggestions.append(chips);
   };
   showSuggestions(video.titleSuggestions);
 
@@ -252,6 +266,7 @@ function buildRow(video, index) {
 
   // Link tujuan — khusus dipakai Pinterest, ditaruh di baris terakhir pin.
   const linkField = el('div', 'field');
+  linkField.style.marginTop = 'var(--s4)';
   linkField.append(el('label', 'lbl', 'Link tujuan (dipakai Pinterest)'));
   const linkInput = el('input');
   linkInput.type = 'url';
@@ -268,18 +283,19 @@ function buildRow(video, index) {
   linkInput.oninput = saveLink;
   linkField.append(linkInput);
   detail.append(linkField);
+
   body.append(detail);
 
   // --- aksi ---
   const actions = el('div', 'vactions');
-  const expandBtn = el('button', 'icon-btn', '⌄');
-  expandBtn.title = 'Brief & saran judul';
+  const expandBtn = iconButton('chevronDown', 'Brief, saran judul & link');
   expandBtn.onclick = () => {
     detail.hidden = !detail.hidden;
-    expandBtn.textContent = detail.hidden ? '⌄' : '⌃';
+    expandBtn.innerHTML = '';
+    expandBtn.append(icon(detail.hidden ? 'chevronDown' : 'chevronUp', 16));
   };
-  const delBtn = el('button', 'icon-btn', '🗑');
-  delBtn.title = 'Hapus video';
+
+  const delBtn = iconButton('trash', 'Hapus video', 'icon-btn danger');
   delBtn.onclick = async () => {
     if (!confirm(`Hapus "${video.title || video.filename}"? File videonya ikut terhapus.`)) return;
     try {
@@ -293,7 +309,6 @@ function buildRow(video, index) {
   };
   actions.append(expandBtn, delBtn);
 
-  row.classList.add('vrow-num'); // ada kolom nomor V1..Vn
   row.append(handle, num, thumb, body, actions);
   return row;
 }

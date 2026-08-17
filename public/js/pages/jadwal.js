@@ -6,7 +6,10 @@
  * item yang gagal bisa diulang sendiri-sendiri.
  */
 import * as api from '../api.js';
-import { el, html, toast, busy, escapeHtml, formatDayLabel, todayISO, sleep, platformDot, attachCounter } from '../utils.js';
+import {
+  el, html, toast, busy, escapeHtml, formatDayLabel, todayISO, sleep,
+  platformDot, attachCounter, icon, iconSvg, button, iconButton
+} from '../utils.js';
 import { QUEUE_LIMIT, limitsFor } from '../config.js';
 import { renderPreview } from '../preview.js';
 
@@ -99,7 +102,7 @@ function renderBuilder(channelData) {
       body.append(el('div', 'vtitle truncate', video.title || video.filename));
       const meta = el('div', 'vmeta');
       meta.append(el('span', null, `V${i + 1}`));
-      if (!video.title) meta.append(el('span', null, '⚠️ belum ada judul'));
+      if (!video.title) meta.append(el('span', null, 'belum ada judul'));
       if (!video.brief) meta.append(el('span', null, 'belum ada brief'));
       body.append(meta);
 
@@ -194,12 +197,12 @@ function renderBuilder(channelData) {
   const previewPanel = html('section', 'panel', `
     <div class="row-between" style="margin-bottom:10px">
       <div class="panel-title" style="margin:0">4 · Pratinjau rotasi</div>
-      <button class="btn btn-ghost btn-sm" id="refreshPreview">↻ Hitung ulang</button>
+      <button class="btn btn-ghost btn-sm" id="refreshPreview">Hitung ulang</button>
     </div>
     <div id="previewWarn"></div>
     <div id="previewBody"><p class="muted">Menghitung…</p></div>
     <div style="margin-top:14px">
-      <button class="btn btn-primary btn-block" id="createBtn">Simpan jadwal ini →</button>
+      <button class="btn btn-primary btn-block" id="createBtn">Simpan jadwal ini</button>
     </div>
   `);
   wrap.append(previewPanel);
@@ -386,7 +389,7 @@ async function renderPlan(planId) {
         <div class="panel-title" style="margin:0">Jadwal ${escapeHtml(plan.startDate)}</div>
         <div class="muted">${plan.items.length} post · zona waktu ${escapeHtml(plan.timezone)}</div>
       </div>
-      <a class="btn btn-ghost btn-sm" href="#/jadwal">← Buat baru</a>
+      <a class="btn btn-ghost btn-sm" href="#/jadwal">Buat baru</a>
     </div>
   `);
   page.append(header);
@@ -396,7 +399,7 @@ async function renderPlan(planId) {
     <div class="panel-title">Langkah 1 · Caption</div>
     <p class="hint">AI menuliskan caption per platform. Bisa ditengok & diedit di panel bawah sebelum dikirim.</p>
     <div class="row">
-      <button class="btn btn-primary" id="genCaptions">✨ Generate caption (${needCaption.length} video)</button>
+      <button class="btn btn-primary" id="genCaptions">${iconSvg('sparkles', 16)} Generate caption (${needCaption.length} video)</button>
       <span class="muted" id="captionStatus">${
         needCaption.length ? `${needCaption.length} video belum punya caption lengkap` : 'Semua video sudah punya caption'
       }</span>
@@ -430,8 +433,8 @@ async function renderPlan(planId) {
     <div class="panel-title">Langkah 2 · Kirim ke Buffer</div>
     <p class="hint">Dikirim satu per satu supaya progresnya kelihatan dan yang gagal bisa diulang sendiri.</p>
     <div class="row" style="margin-bottom:10px">
-      <button class="btn btn-primary" id="sendAll">🚀 Kirim semua</button>
-      <button class="btn btn-ghost" id="retryFailed">↻ Ulangi yang gagal</button>
+      <button class="btn btn-primary" id="sendAll">${iconSvg('send', 16)} Kirim semua</button>
+      <button class="btn btn-ghost" id="retryFailed">${iconSvg('refresh', 16)} Ulangi yang gagal</button>
       <span class="muted" id="sendStatus"></span>
     </div>
     <div class="sendlist" id="sendList"></div>
@@ -450,7 +453,7 @@ async function renderPlan(planId) {
     sendItems(e.target, plan, sendList, plan.items.filter((i) => i.status === 'error'));
 }
 
-async function generateCaptions(button, plan, planVideos, progressBox) {
+async function generateCaptions(trigger, plan, planVideos, progressBox) {
   const targets = planVideos.filter((v) => {
     const platforms = [...new Set(plan.items.filter((i) => i.videoId === v.id).map((i) => i.platform))];
     return platforms.some((p) => !v.captions?.[p]?.trim());
@@ -458,14 +461,16 @@ async function generateCaptions(button, plan, planVideos, progressBox) {
 
   if (!targets.length) return toast('Semua video sudah punya caption.', 'ok');
 
-  const done = busy(button, 'Menulis…');
+  const done = busy(trigger, 'Menulis…');
   progressBox.innerHTML = '';
   let ok = 0;
 
   for (const video of targets) {
     const row = el('div', 'senditem');
     row.style.gridTemplateColumns = 'auto 1fr auto';
-    row.append(el('span', null, '⏳'));
+    const stateIcon = el('span', 'state');
+    stateIcon.append(el('span', 'spin'));
+    row.append(stateIcon);
     row.append(el('span', 'truncate', video.title || video.filename));
     const state = el('span', 'muted', 'menulis…');
     row.append(state);
@@ -475,12 +480,12 @@ async function generateCaptions(button, plan, planVideos, progressBox) {
       const { captions } = await api.planCaption(plan.id, video.id, video.brief || video.title);
       video.captions = captions;
       row.classList.add('ok');
-      row.firstChild.textContent = '✓';
+      stateIcon.innerHTML = iconSvg('check', 16);
       state.textContent = `${Object.keys(captions).length} platform`;
       ok++;
     } catch (err) {
       row.classList.add('err');
-      row.firstChild.textContent = '✕';
+      stateIcon.innerHTML = iconSvg('x', 16);
       state.textContent = err.message;
       state.className = 'err-msg';
     }
@@ -495,8 +500,7 @@ function buildEditors(container, plan, planVideos) {
   for (const video of planVideos) {
     const platforms = [...new Set(plan.items.filter((i) => i.videoId === video.id).map((i) => i.platform))];
 
-    const box = el('div', 'panel');
-    box.style.boxShadow = 'none';
+    const box = el('div', 'subcard');
     box.append(el('div', 'panel-title', video.title || video.filename));
 
     for (const platform of platforms) {
@@ -512,7 +516,7 @@ function buildEditors(container, plan, planVideos) {
       // Pratinjau bergaya platform — untuk mengecek panjang teks & posisi hashtag.
       const previewBox = el('div', 'preview-wrap');
       previewBox.hidden = true;
-      const previewBtn = el('button', 'btn btn-ghost btn-sm', '👁 Preview');
+      const previewBtn = button('btn btn-ghost btn-sm', 'eye', 'Preview');
       previewBtn.type = 'button';
       label.append(previewBtn);
       field.append(label);
@@ -532,7 +536,8 @@ function buildEditors(container, plan, planVideos) {
       };
       previewBtn.onclick = () => {
         previewBox.hidden = !previewBox.hidden;
-        previewBtn.textContent = previewBox.hidden ? '👁 Preview' : '🙈 Tutup';
+        previewBtn.innerHTML = '';
+        previewBtn.append(icon(previewBox.hidden ? 'eye' : 'eyeOff', 14), el('span', null, previewBox.hidden ? 'Preview' : 'Tutup'));
         refreshPreview();
       };
       ta.addEventListener('input', refreshPreview);
@@ -564,7 +569,7 @@ function buildItemRow(item, plan, container) {
   const row = el('div', `senditem ${item.status === 'sent' ? 'ok' : item.status === 'error' ? 'err' : ''}`);
   row.dataset.index = item.index;
 
-  row.append(el('span', null, item.status === 'sent' ? '✓' : item.status === 'error' ? '✕' : '·'));
+  row.append(html('span', 'state', iconSvg(item.status === 'sent' ? 'check' : item.status === 'error' ? 'x' : 'dot', 16)));
 
   const body = el('div', 'grow');
   body.append(el('div', 'truncate', `${item.channelLabel} — ${item.videoTitle}`));
@@ -577,7 +582,7 @@ function buildItemRow(item, plan, container) {
     draft: 'draft', sent: 'terkirim', error: 'gagal'
   }[item.status] || item.status));
 
-  const retry = el('button', 'btn btn-ghost btn-sm', '↻');
+  const retry = iconButton('refresh', 'Kirim ulang item ini');
   retry.title = 'Kirim ulang item ini';
   retry.hidden = item.status === 'sent';
   retry.onclick = (e) => sendItems(e.target, plan, container, [item]);
@@ -594,7 +599,7 @@ function updateSendStatus(plan) {
   node.textContent = `${sent}/${plan.items.length} terkirim${failed ? ` · ${failed} gagal` : ''}`;
 }
 
-async function sendItems(button, plan, container, items) {
+async function sendItems(trigger, plan, container, items) {
   if (!items.length) return toast('Tidak ada yang perlu dikirim.', 'ok');
 
   const pending = items.filter((i) => i.status !== 'sent');
@@ -605,11 +610,11 @@ async function sendItems(button, plan, container, items) {
     return;
   }
 
-  const done = busy(button, `Mengirim 0/${pending.length}`);
+  const done = busy(trigger, `Mengirim 0/${pending.length}`);
   let ok = 0;
 
   for (const [i, item] of pending.entries()) {
-    button.innerHTML = `<span class="spin"></span> Mengirim ${i + 1}/${pending.length}`;
+    trigger.innerHTML = `<span class="spin"></span> Mengirim ${i + 1}/${pending.length}`;
     try {
       const { item: updated } = await api.sendPlanItem(plan.id, item.index);
       Object.assign(plan.items[item.index], updated);
