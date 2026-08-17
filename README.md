@@ -125,7 +125,7 @@ Penyebab paling sering:
 
 | Gejala | Kemungkinan |
 |---|---|
-| HTTP 400 | `HERMES_MODEL` belum diisi — banyak endpoint mewajibkan nama model |
+| HTTP 400 / `missing model` | Nama model salah. Default `hermes` (combo 9Router); ganti lewat `HERMES_MODEL` |
 | HTTP 401 / 403 | `HERMES_API_KEY` salah |
 | HTTP 404 | `HERMES_API_URL` kurang `/v1/chat/completions` |
 
@@ -145,7 +145,7 @@ Penyebab paling sering:
 
 | Tempat | Isi |
 |---|---|
-| `.env` | token, URL, **`HERMES_MODEL`**, `TIMEZONE`, `DATA_DIR`, batas rate limit, TTL cache metrics |
+| `.env` | token, URL, `HERMES_MODEL` (default `hermes`), `TIMEZONE`, `DATA_DIR`, batas rate limit, TTL cache metrics |
 | `public/js/config.js` | batas karakter per platform, warna platform, menu |
 | `lib/rotation.js` | `QUEUE_LIMIT`, jam tayang bawaan per channel |
 | `lib/compose.js` | platform mana yang pakai hashtag / punya judul / disisipi link |
