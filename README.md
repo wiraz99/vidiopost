@@ -98,6 +98,9 @@ Tambahan:
 | `POST /api/videos/reorder` | ubah urutan (menentukan rotasi) |
 | `POST /api/videos/:id/suggest-title` | saran judul SEO |
 | `GET /api/channels/detail` | channel + asal data + masalahnya kalau kosong |
+| `GET /api/channels/:id/boards` | daftar board Pinterest untuk dipilih |
+| `PATCH /api/channels/:id/settings` | simpan board pilihan per channel |
+| `GET /api/media/check` | uji apakah video bisa diunduh dari luar |
 | `GET /api/queue` | antrian asli dari Buffer |
 | `GET /api/usage` | pemakaian kuota API hari ini |
 | `GET/POST/PATCH/DELETE /api/hashtags[/:id]` | set hashtag |

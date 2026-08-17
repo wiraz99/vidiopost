@@ -61,6 +61,8 @@ export const suggestTitle = (id, brief, count) => post(`/api/videos/${id}/sugges
 export const getChannels = () => get('/api/channels');
 export const getChannelsDetail = (refresh) => get(`/api/channels/detail${refresh ? '?refresh=1' : ''}`);
 export const getQueue = () => get('/api/queue');
+export const getChannelBoards = (id, refresh) => get(`/api/channels/${id}/boards${refresh ? '?refresh=1' : ''}`);
+export const setChannelSettings = (id, body) => patch(`/api/channels/${id}/settings`, body);
 export const getUsage = () => get('/api/usage');
 export const getHealth = () => get('/api/health');
 

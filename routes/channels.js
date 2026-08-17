@@ -5,9 +5,10 @@
  * dibaca dari antrian asli — bukan lagi hitungan lokal yang harus disinkron manual.
  */
 const express = require('express');
+const store = require('../lib/store');
 const buffer = require('../lib/buffer');
 const { QUEUE_LIMIT } = require('../lib/rotation');
-const { asyncHandler } = require('../lib/http');
+const { asyncHandler, HttpError } = require('../lib/http');
 
 const router = express.Router();
 
@@ -53,4 +54,40 @@ router.get('/api/queue', asyncHandler(async (req, res) => {
 
 router.get('/api/usage', (req, res) => res.json(buffer.usageSnapshot()));
 
+// ---------------- setelan per channel ----------------
+// Sekarang isinya baru board Pinterest, tapi sengaja dibuat umum supaya
+// setelan lain per channel bisa menyusul tanpa mengubah bentuk datanya.
+
+const readSettings = () => store.read('channel-settings', {});
+
+router.get('/api/channels/settings', (req, res) => res.json({ settings: readSettings() }));
+
+/** Board Pinterest milik sebuah channel, untuk ditampilkan sebagai pilihan. */
+router.get('/api/channels/:id/boards', asyncHandler(async (req, res) => {
+  const { channels } = await buffer.discoverChannels();
+  const channel = channels.find((c) => c.id === req.params.id);
+  if (!channel) throw new HttpError('Channel tidak ditemukan', 404);
+  if (channel.platform !== 'pinterest') return res.json({ boards: [], reason: 'Bukan channel Pinterest' });
+
+  try {
+    const boards = await buffer.channelBoards(channel.account, channel.id, { force: req.query.refresh === '1' });
+    res.json({ boards, selected: readSettings()[channel.id]?.boardId || '' });
+  } catch (err) {
+    res.json({ boards: [], problem: err.message, selected: readSettings()[channel.id]?.boardId || '' });
+  }
+}));
+
+router.patch('/api/channels/:id/settings', asyncHandler(async (req, res) => {
+  const settings = readSettings();
+  const current = settings[req.params.id] || {};
+  if (req.body?.boardId !== undefined) current.boardId = String(req.body.boardId || '');
+  settings[req.params.id] = current;
+  store.write('channel-settings', settings);
+  res.json({ settings: current });
+}));
+
+/** Board yang dipilih untuk sebuah channel; dipakai saat menyusun post. */
+const boardFor = (channelId) => readSettings()[channelId]?.boardId || '';
+
 module.exports = router;
+module.exports.boardFor = boardFor;

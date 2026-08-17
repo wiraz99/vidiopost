@@ -48,7 +48,7 @@ query Introspect {
   schedulingType: __type(name: "SchedulingType")  { enumValues { name } }
   postStatus:     __type(name: "PostStatus")      { enumValues { name } }
   postMetricType: __type(name: "PostMetricType")  { enumValues { name } }
-  postType:       __type(name: "PostType")        { enumValues { name } }
+  postTypeEnum:   __type(name: "PostType")        { enumValues { name } }
   createPostInput: __type(name: "CreatePostInput") {
     inputFields { name type { name kind ofType { name kind } } }
   }
@@ -111,9 +111,12 @@ const PINTEREST_BOARDS = `
 query PinterestBoards($id: ChannelId!) {
   channel(input: { id: $id }) {
     id
-    service
     name
-    ... on PinterestChannel { boards { id name } }
+    metadata {
+      ... on PinterestMetadata {
+        boards { serviceId name }
+      }
+    }
   }
 }`;
 
@@ -158,7 +161,7 @@ async function probeToken(label, token) {
   report.schedulingType = enumNames('schedulingType');
   report.postStatus = enumNames('postStatus');
   report.postMetricType = enumNames('postMetricType');
-  report.postType = enumNames('postType');
+  report.postType = enumNames('postTypeEnum');
 
   console.log(`ShareMode      : ${report.shareMode.join(', ') || '(kosong)'}`);
   console.log(`SchedulingType : ${report.schedulingType.join(', ') || '(kosong)'}`);
@@ -232,10 +235,10 @@ async function probeToken(label, token) {
       console.log('   -> kirim pesan ini ke Claude, nama field-nya perlu disesuaikan');
       report.pinterestBoardsError = boardErr;
     } else {
-      report.pinterestBoards = boardRes.data?.channel?.boards || [];
+      report.pinterestBoards = boardRes.data?.channel?.metadata?.boards || [];
       console.log('\n✅ BOARD PINTEREST — salin salah satu id ke PINTEREST_BOARD_ID:');
       for (const b of report.pinterestBoards) {
-        console.log(`   ${String(b.name || '').padEnd(28)} ${b.id}`);
+        console.log(`   ${String(b.name || '').padEnd(28)} ${b.serviceId}`);
       }
       if (!report.pinterestBoards.length) console.log('   (belum ada board di akun ini)');
     }

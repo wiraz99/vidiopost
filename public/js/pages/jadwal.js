@@ -150,6 +150,9 @@ function renderBuilder(channelData) {
 
     row.append(cb, platformDot(channel.platform), body, right);
     channelPick.append(row);
+
+    // Pinterest wajib punya board tujuan — tanpa itu Buffer menolak pin-nya.
+    if (channel.platform === 'pinterest') channelPick.append(buildBoardPicker(channel));
   }
   wrap.append(channelPanel);
 
@@ -216,6 +219,77 @@ function renderBuilder(channelData) {
   }
 
   doPreview();
+}
+
+/**
+ * Pemilih board Pinterest.
+ * `boardServiceId` wajib ada di metadata pin; kalau kosong, Buffer menolak
+ * dengan "Invalid post". Daftarnya diambil dari Buffer dan pilihannya
+ * disimpan per channel di server, jadi cukup dipilih sekali.
+ */
+function buildBoardPicker(channel) {
+  const box = el('div', 'subcard');
+  box.style.marginLeft = '34px';
+
+  const label = el('label', 'lbl', `Board tujuan untuk ${channel.label}`);
+  const select = el('select');
+  select.disabled = true;
+  select.append(el('option', null, 'Memuat board…'));
+
+  const note = el('p', 'muted');
+  note.style.marginTop = '6px';
+
+  box.append(label, select, note);
+
+  (async () => {
+    try {
+      const { boards, selected, problem } = await api.getChannelBoards(channel.id);
+
+      select.innerHTML = '';
+      if (problem || !boards.length) {
+        select.append(el('option', null, 'Board tidak bisa dibaca'));
+        note.textContent = problem
+          ? `Gagal membaca board: ${problem}`
+          : 'Akun Pinterest ini belum punya board. Buat dulu satu board di Pinterest.';
+        note.style.color = 'var(--bad)';
+        return;
+      }
+
+      const kosong = el('option', null, '— pilih board —');
+      kosong.value = '';
+      select.append(kosong);
+      for (const board of boards) {
+        const opt = el('option', null, board.name);
+        opt.value = board.id;
+        select.append(opt);
+      }
+      select.value = selected || '';
+      select.disabled = false;
+
+      const sync = () => {
+        note.style.color = select.value ? 'var(--ok)' : 'var(--bad)';
+        note.textContent = select.value ? 'Board tersimpan.' : 'Belum dipilih — pin ke Pinterest akan ditolak.';
+      };
+      sync();
+
+      select.onchange = async () => {
+        try {
+          await api.setChannelSettings(channel.id, { boardId: select.value });
+          sync();
+        } catch (err) {
+          note.style.color = 'var(--bad)';
+          note.textContent = `Gagal menyimpan: ${err.message}`;
+        }
+      };
+    } catch (err) {
+      select.innerHTML = '';
+      select.append(el('option', null, 'Gagal memuat'));
+      note.textContent = err.message;
+      note.style.color = 'var(--bad)';
+    }
+  })();
+
+  return box;
 }
 
 /** Kumpulkan isian form jadi body request. */

@@ -15,6 +15,7 @@ const { buildRotation, QUEUE_LIMIT } = require('../lib/rotation');
 const { buildPost } = require('../lib/compose');
 const { tagsFor } = require('./hashtags');
 const { resolveLink } = require('./links');
+const { boardFor } = require('./channels');
 const media = require('../lib/media');
 const { asyncHandler, HttpError } = require('../lib/http');
 
@@ -192,7 +193,7 @@ router.post('/api/plan/:id/send/:index', asyncHandler(async (req, res) => {
     caption: video.captions?.[item.platform] || '',
     hashtags,
     link: resolveLink(video, item.platform),
-    boardId: item.boardId || ''
+    boardId: item.boardId || boardFor(item.channelId)
   });
 
   // Field wajib yang belum terisi dicegat di sini, sebelum request dikirim —
@@ -246,7 +247,7 @@ router.get('/api/plan/:id/text/:index', asyncHandler(async (req, res) => {
     caption: video?.captions?.[item.platform] || '',
     hashtags,
     link: resolveLink(video, item.platform),
-    boardId: item.boardId || ''
+    boardId: item.boardId || boardFor(item.channelId)
   });
   res.json({ text, length: text.length, warning, metadata, missing });
 }));
