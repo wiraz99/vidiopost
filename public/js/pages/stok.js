@@ -249,6 +249,25 @@ function buildRow(video, index) {
   const suggestRow = el('div', 'row');
   suggestRow.append(suggestBtn);
   detail.append(suggestRow, suggestions);
+
+  // Link tujuan — khusus dipakai Pinterest, ditaruh di baris terakhir pin.
+  const linkField = el('div', 'field');
+  linkField.append(el('label', 'lbl', 'Link tujuan (dipakai Pinterest)'));
+  const linkInput = el('input');
+  linkInput.type = 'url';
+  linkInput.placeholder = 'https://… halaman produk / WhatsApp';
+  linkInput.value = video.link || '';
+  const saveLink = debounce(async () => {
+    try {
+      await api.updateVideo(video.id, { link: linkInput.value });
+      video.link = linkInput.value;
+    } catch (err) {
+      toast(`Link gagal disimpan: ${err.message}`, 'bad');
+    }
+  }, 600);
+  linkInput.oninput = saveLink;
+  linkField.append(linkInput);
+  detail.append(linkField);
   body.append(detail);
 
   // --- aksi ---

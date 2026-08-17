@@ -58,7 +58,8 @@ router.get('/api/videos', (req, res) => {
   res.json({ videos: status ? videos.filter((v) => v.status === status) : videos });
 });
 
-const EDITABLE = ['title', 'brief', 'captions', 'hashtagSetIds', 'status', 'order'];
+// `link` = URL tujuan, dipakai Pinterest (lihat lib/compose.js).
+const EDITABLE = ['title', 'brief', 'link', 'captions', 'hashtagSetIds', 'status', 'order'];
 
 router.patch('/api/videos/:id', asyncHandler(async (req, res) => {
   const videos = readVideos();

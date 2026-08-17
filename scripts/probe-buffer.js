@@ -68,7 +68,7 @@ query Account {
 }`;
 
 const CHANNELS = `
-query Channels($organizationId: String!) {
+query Channels($organizationId: OrganizationId!) {
   channels(input: { organizationId: $organizationId }) {
     id
     service
@@ -78,7 +78,7 @@ query Channels($organizationId: String!) {
 }`;
 
 const SCHEDULED = `
-query Scheduled($organizationId: String!) {
+query Scheduled($organizationId: OrganizationId!) {
   posts(first: 50, input: {
     organizationId: $organizationId
     filter: { status: [scheduled] }
@@ -89,7 +89,7 @@ query Scheduled($organizationId: String!) {
 }`;
 
 const SENT_WITH_METRICS = `
-query SentWithMetrics($organizationId: String!) {
+query SentWithMetrics($organizationId: OrganizationId!) {
   posts(first: 10, input: {
     organizationId: $organizationId
     filter: { status: [sent] }
@@ -107,7 +107,7 @@ query SentWithMetrics($organizationId: String!) {
 }`;
 
 const DAILY_LIMITS = `
-query DailyLimits($organizationId: String!) {
+query DailyLimits($organizationId: OrganizationId!) {
   dailyPostingLimits(input: { organizationId: $organizationId }) {
     channelId
     limit
