@@ -24,13 +24,33 @@ router.get('/api/diagnostics', asyncHandler(async (req, res) => {
   const checks = [];
 
   // ---------- alamat publik ----------
+  // Alamat yang BENAR-BENAR dipakai browser bisa dibaca dari header request.
+  // Membandingkannya dengan PUBLIC_BASE_URL langsung menunjukkan kalau
+  // setelannya menunjuk ke domain lain — penyebab paling sering "video tidak
+  // bisa diunduh Buffer".
+  const proto = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+  const host = req.headers['x-forwarded-host'] || req.headers.host || '';
+  const alamatSekarang = host ? `${proto}://${host}`.replace(/\/+$/, '') : '';
+
   const baseUrl = media.PUBLIC_BASE_URL;
+  const cocok = alamatSekarang && alamatSekarang.toLowerCase() === baseUrl.toLowerCase();
+
   if (media.baseUrlLooksLocal()) {
     checks.push(bad(
       'Alamat publik',
       `PUBLIC_BASE_URL berisi "${baseUrl}" — alamat lokal yang tidak bisa dijangkau dari internet.`,
-      'Isi PUBLIC_BASE_URL di Coolify dengan alamat yang kamu pakai membuka aplikasi ini.'
+      alamatSekarang
+        ? `Ganti PUBLIC_BASE_URL di Coolify menjadi: ${alamatSekarang}`
+        : 'Isi PUBLIC_BASE_URL di Coolify dengan alamat yang kamu pakai membuka aplikasi ini.'
     ));
+  } else if (alamatSekarang && !cocok) {
+    checks.push(bad(
+      'Alamat publik',
+      `Kamu membuka aplikasi ini lewat "${alamatSekarang}", tapi PUBLIC_BASE_URL berisi "${baseUrl}". ` +
+      'Buffer diberi alamat yang kedua, dan itulah yang gagal dia unduh.',
+      `Ganti PUBLIC_BASE_URL di Coolify menjadi persis: ${alamatSekarang}`
+    ));
+    checks[checks.length - 1].salin = alamatSekarang;
   } else {
     checks.push(ok('Alamat publik', baseUrl));
   }

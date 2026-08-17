@@ -83,7 +83,25 @@ export function diagnosticsPanel() {
       }
       if (check.fix) {
         const fix = el('div', 'diag-fix');
-        fix.append(icon('arrowRight', 13), el('span', null, check.fix));
+        fix.append(icon('arrowRight', 13), el('span', 'grow', check.fix));
+
+        // Nilai yang tinggal disalin ke Coolify — mengetik ulang alamat
+        // adalah sumber salah ketik yang sudah terbukti.
+        if (check.salin) {
+          const salin = el('button', 'linkbtn', 'Salin');
+          salin.onclick = async () => {
+            try {
+              await navigator.clipboard.writeText(check.salin);
+              salin.textContent = 'Tersalin';
+              setTimeout(() => { salin.textContent = 'Salin'; }, 1500);
+            } catch {
+              // Sebagian browser HP menolak clipboard tanpa HTTPS; tampilkan
+              // teksnya supaya masih bisa disorot manual.
+              salin.replaceWith(html('code', null, escapeHtml(check.salin)));
+            }
+          };
+          fix.append(salin);
+        }
         isi.append(fix);
       }
 
