@@ -10,6 +10,7 @@ import {
   el, html, toast, busy, formatBytes, debounce, escapeHtml,
   icon, iconSvg, button, iconButton, videoThumb
 } from '../utils.js';
+import { diagnosticsPanel } from '../components/diagnostics.js';
 
 let videos = [];
 let links = [];
@@ -17,6 +18,10 @@ let listEl = null;
 
 export async function render(view) {
   const wrap = el('div', 'stack');
+
+  // Ditaruh paling atas: masalah setelan harus ketahuan sebelum
+  // user repot-repot upload lalu gagal kirim.
+  wrap.append(diagnosticsPanel());
 
   // ---------- upload ----------
   const uploadPanel = html('section', 'panel', `

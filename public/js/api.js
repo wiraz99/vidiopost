@@ -91,6 +91,8 @@ export const deleteLink = (id) => del(`/api/links/${id}`);
 
 // ---------- diagnosa AI ----------
 export const testAI = () => get('/api/ai/test');
+export const getDiagnostics = (refresh) => get(`/api/diagnostics${refresh ? '?refresh=1' : ''}`);
+export const checkMedia = (id) => get(`/api/media/check${id ? `?id=${id}` : ''}`);
 
 // ---------- riwayat & insight ----------
 export const getHistory = (limit = 100) => get(`/api/history?limit=${limit}`);

@@ -365,3 +365,19 @@ pre code { background: none; padding: 0; }
 /* ---------- kartu bersarang (di dalam panel) ---------- */
 .subcard { border: 1px solid var(--line); border-radius: var(--r); padding: var(--s4); background: var(--surface); }
 .subcard + .subcard { margin-top: var(--s3); }
+
+/* ---------- panel diagnosa ---------- */
+.diag-row {
+  display: flex; gap: var(--s3); align-items: flex-start;
+  padding: var(--s3) 0; border-top: 1px solid var(--line);
+}
+.diag-icon { line-height: 0; margin-top: 2px; }
+.diag-label { font-weight: 500; font-size: 13.5px; }
+.diag-detail { font-size: 12.5px; color: var(--muted); margin-top: 2px; word-break: break-word; }
+.diag-fix {
+  display: flex; gap: 6px; align-items: flex-start;
+  font-size: 12.5px; color: var(--accent-hover);
+  background: var(--accent-soft); border: 1px solid var(--accent-line);
+  padding: 6px 9px; border-radius: var(--r-sm); margin-top: 6px;
+}
+.diag-fix .ico { margin-top: 2px; }

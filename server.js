@@ -23,6 +23,7 @@ app.use(require('./routes/links'));     // /api/links
 app.use(require('./routes/plan'));      // /api/plan
 app.use(require('./routes/history'));   // /api/publish, /api/history
 app.use(require('./routes/insights'));  // /api/insights
+app.use(require('./routes/diagnostics'));// /api/diagnostics
 
 app.get('/api/health', (req, res) => {
   res.json({
