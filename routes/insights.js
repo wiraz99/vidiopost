@@ -170,6 +170,72 @@ async function refreshCache() {
   return cache;
 }
 
+/**
+ * Kemampuan API Buffer, ditanyakan langsung ke servernya.
+ *
+ * Dipakai untuk menjawab "kok platform X tidak ada angkanya" secara tuntas:
+ * kalau sebuah metrik DIKENAL API tapi tidak pernah kita terima untuk platform
+ * itu, berarti jaringannya yang tidak melaporkan — bukan query kita yang salah
+ * atau field yang belum kita minta.
+ *
+ * Skema jarang berubah, jadi hasilnya disimpan dan hanya diambil ulang kalau
+ * diminta. Biayanya satu request.
+ */
+router.get('/api/insights/skema', asyncHandler(async (req, res) => {
+  if (!buffer.anyToken()) {
+    return res.json({ ada: false, alasan: 'Token Buffer belum diisi.' });
+  }
+
+  let skema = store.read('metrics-schema', null);
+  let error = null;
+
+  if (req.query.refresh === '1' || !skema) {
+    try {
+      skema = await buffer.introspectMetrics();
+      store.write('metrics-schema', skema);
+    } catch (err) {
+      error = err.message;
+    }
+  }
+
+  if (!skema) return res.json({ ada: false, alasan: error || 'Skema belum pernah diambil.', error });
+
+  // Apa yang BENAR-BENAR pernah kita terima, dikelompokkan per platform.
+  const cache = store.read('metrics-cache', null);
+  const diterima = {};
+  const semuaTerpakai = new Set();
+
+  // Akun yang memakai query cadangan tidak mengirim channelService, jadi
+  // platformnya dicari lewat daftar channel — sama seperti rute utama.
+  const { channels } = await buffer.discoverChannels().catch(() => ({ channels: [] }));
+  const platformById = new Map(channels.map((c) => [c.id, c.platform]));
+
+  for (const post of cache?.posts || []) {
+    const platform = normKey(post.channelService) || platformById.get(post.channelId) || 'lainnya';
+    if (!diterima[platform]) diterima[platform] = new Set();
+    for (const m of post.metrics || []) {
+      if (m?.value == null) continue;
+      const key = normKey(m.type || m.name);
+      if (!key) continue;
+      diterima[platform].add(key);
+      semuaTerpakai.add(key);
+    }
+  }
+
+  const dikenal = skema.tipeMetrik.map((t) => ({ ...t, kunci: normKey(t.nama) }));
+
+  res.json({
+    ada: true,
+    error,
+    skema: { diperiksaPada: skema.diperiksaPada, satuan: skema.satuan, postFields: skema.postFields },
+    dikenal,
+    diterima: Object.fromEntries(Object.entries(diterima).map(([p, s]) => [p, [...s]])),
+    // Metrik yang API-nya kenal tapi belum pernah sampai ke kita dari mana pun.
+    belumPernahDiterima: dikenal.filter((t) => !semuaTerpakai.has(t.kunci)).map((t) => t.nama),
+    usage: buffer.usageSnapshot()
+  });
+}));
+
 router.get('/api/insights', asyncHandler(async (req, res) => {
   const usage = buffer.usageSnapshot();
 

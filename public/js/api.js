@@ -131,3 +131,4 @@ export const changePassword = (body) => post('/api/auth/password', body);
 // ---------- riwayat & insight ----------
 export const getHistory = (limit = 100) => get(`/api/history?limit=${limit}`);
 export const getInsights = (refresh) => get(`/api/insights${refresh ? '?refresh=1' : ''}`);
+export const getMetricSchema = (refresh) => get(`/api/insights/skema${refresh ? '?refresh=1' : ''}`);

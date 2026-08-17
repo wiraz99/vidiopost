@@ -217,6 +217,8 @@ function diagnosaPanel() {
     box.append(row);
   }
 
+  box.append(pemeriksaSkema());
+
   panel.append(box);
   const toggle = panel.querySelector('#toggleDiag');
   toggle.onclick = () => {
@@ -225,6 +227,111 @@ function diagnosaPanel() {
   };
 
   return panel;
+}
+
+/**
+ * Menanyakan langsung ke Buffer metrik apa saja yang dikenal API-nya, lalu
+ * membandingkannya dengan apa yang benar-benar kita terima per platform.
+ *
+ * Gunanya memisahkan dua kemungkinan yang selama ini tercampur:
+ *   - API-nya tidak punya metrik itu sama sekali  → tidak ada yang bisa diperbuat
+ *   - API punya, tapi platform itu tidak melaporkan → batasan jaringannya
+ */
+function pemeriksaSkema() {
+  const wrap = el('div', 'subcard');
+  wrap.style.marginTop = 'var(--s4)';
+
+  const head = el('div', 'row-between');
+  head.append(el('div', null, 'Kemampuan API Buffer'));
+  const tombol = button('btn btn-ghost btn-sm', 'sparkles', 'Periksa');
+  head.append(tombol);
+  wrap.append(head);
+
+  const hasil = el('div');
+  hasil.style.marginTop = 'var(--s3)';
+  hasil.append(el('p', 'note',
+    'Menanyakan ke Buffer daftar metrik yang dikenal API-nya, lalu membandingkannya dengan ' +
+    'yang benar-benar diterima tiap platform. Memakai satu request kuota.'));
+  wrap.append(hasil);
+
+  const gambar = (d) => {
+    hasil.innerHTML = '';
+
+    if (!d.ada) {
+      hasil.append(el('p', 'mempty bad-text', d.alasan || 'Tidak bisa diperiksa.'));
+      return;
+    }
+
+    hasil.append(el('p', 'note',
+      `Diperiksa ${formatDate(d.skema.diperiksaPada)} · API mengenal ${d.dikenal.length} jenis metrik.`));
+
+    const platforms = Object.keys(d.diterima).sort();
+    if (!platforms.length) {
+      hasil.append(el('p', 'mempty', 'Belum ada metrik yang pernah diterima dari platform mana pun.'));
+    }
+
+    for (const p of platforms) {
+      const baris = el('div', 'vidrow');
+      baris.append(platformDot(p));
+      baris.append(el('span', 'vidrow-name truncate', metaFor(p).name));
+
+      const chips = el('span', 'chipset');
+      const daftar = d.diterima[p];
+      if (daftar.length) {
+        for (const k of daftar) {
+          const chip = el('span', 'mchip');
+          chip.append(el('span', 'mchip-label', k));
+          chips.append(chip);
+        }
+      } else {
+        chips.append(el('span', 'bad-text', 'tidak pernah mengirim metrik apa pun'));
+      }
+      baris.append(chips);
+      hasil.append(baris);
+    }
+
+    // Inilah kesimpulan yang selama ini sulit ditarik.
+    const kosong = platforms.filter((p) => !d.diterima[p].length);
+    if (kosong.length) {
+      hasil.append(html('div', 'alert alert-info', `
+        <div>
+          <b>Kesimpulan untuk ${kosong.map((p) => escapeHtml(metaFor(p).name)).join(', ')}</b>
+          <div style="margin-top:5px">
+            API Buffer mengenal ${d.dikenal.length} jenis metrik dan platform lain berhasil
+            mengirimkannya lewat query yang sama persis. Jadi kekosongan di sini bukan karena
+            query yang salah atau field yang belum diminta — jaringan itu memang tidak
+            melaporkan apa pun ke API Buffer.
+          </div>
+          <div style="margin-top:5px">
+            Angka yang muncul di halaman Buffer datang dari jalur internal mereka, yang
+            menurut dokumentasi Buffer sendiri berbeda dari API publik ini.
+          </div>
+        </div>
+      `));
+    }
+
+    if (d.belumPernahDiterima?.length) {
+      hasil.append(el('p', 'note',
+        `Dikenal API tapi belum pernah kita terima dari mana pun: ${d.belumPernahDiterima.join(', ')}.`));
+    }
+  };
+
+  tombol.onclick = async (e) => {
+    const done = busy(e.currentTarget, 'Menanya…');
+    try {
+      gambar(await api.getMetricSchema(true));
+    } catch (err) {
+      hasil.innerHTML = '';
+      hasil.append(el('p', 'mempty bad-text', `Gagal memeriksa: ${err.message}`));
+    } finally {
+      done();
+    }
+  };
+
+  // Kalau sudah pernah diperiksa, tampilkan hasil tersimpan tanpa memakai kuota.
+  api.getMetricSchema(false).then((d) => { if (d.ada) gambar(d); }).catch(() => {});
+
+  return wrap;
 }
 
 // ---------- per platform ----------
