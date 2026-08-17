@@ -6,12 +6,13 @@ import { NAV } from './config.js';
 import { el, qsa, icon } from './utils.js';
 
 const routes = {
-  '/stok':    () => import('./pages/stok.js'),
-  '/jadwal':  () => import('./pages/jadwal.js'),
-  '/hashtag': () => import('./pages/hashtag.js'),
-  '/tautan':  () => import('./pages/tautan.js'),
-  '/insight': () => import('./pages/insight.js'),
-  '/riwayat': () => import('./pages/riwayat.js')
+  '/stok':        () => import('./pages/stok.js'),
+  '/jadwal':      () => import('./pages/jadwal.js'),
+  '/jadwal/baru': () => import('./pages/jadwal-baru.js'),
+  '/hashtag':     () => import('./pages/hashtag.js'),
+  '/tautan':      () => import('./pages/tautan.js'),
+  '/insight':     () => import('./pages/insight.js'),
+  '/riwayat':     () => import('./pages/riwayat.js')
 };
 
 const DEFAULT_ROUTE = '/stok';
@@ -37,11 +38,21 @@ function buildNav(container, isSidebar) {
   }
 }
 
+/**
+ * Sub-halaman ikut menyalakan menu induknya: '/jadwal/baru' tetap
+ * menyorot "Jadwal", bukan tidak menyorot apa pun.
+ */
+const navPathFor = (path) =>
+  NAV.find((n) => n.path === path)?.path ||
+  NAV.find((n) => path.startsWith(`${n.path}/`))?.path ||
+  path;
+
 function markActive(path) {
+  const active = navPathFor(path);
   for (const link of qsa('.nav a, .bottomnav a')) {
-    link.classList.toggle('active', link.dataset.path === path);
+    link.classList.toggle('active', link.dataset.path === active);
   }
-  const item = NAV.find((n) => n.path === path);
+  const item = NAV.find((n) => n.path === active);
   const title = item?.full || item?.label || 'Video Post';
   document.getElementById('pageTitle').textContent = title;
   document.title = `${title} — Arachynana`;

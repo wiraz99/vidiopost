@@ -146,6 +146,41 @@ export const todayISO = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
+/** Tanggal lokal n hari dari sekarang, format 'YYYY-MM-DD'. */
+export const plusDaysISO = (n) => {
+  const d = new Date();
+  d.setDate(d.getDate() + n);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+/**
+ * Besok, bukan hari ini.
+ *
+ * Jam tayang bawaan dimulai 09:00; kalau jadwal dibuat siang atau sore, slot
+ * hari ini langsung kedaluwarsa dan Buffer menolaknya. Besok adalah bawaan
+ * yang benar untuk hampir semua kasus.
+ */
+export const tomorrowISO = () => plusDaysISO(1);
+
+/** '2026-08-20' + '2026-08-24' → 'Kam, 20 Agu – Sen, 24 Agu' */
+export function formatRange(from, to) {
+  if (!from) return '-';
+  if (!to || to === from) return formatDayLabel(from);
+  return `${formatDayLabel(from)} – ${formatDayLabel(to)}`;
+}
+
+/** Ganti judul halaman di topbar (router menyetelnya dulu dari NAV). */
+export function setPageTitle(text, sub) {
+  const node = document.getElementById('pageTitle');
+  if (node) node.textContent = text;
+  document.title = `${text} — Arachynana`;
+  const subNode = document.getElementById('pageSub');
+  if (subNode) {
+    subNode.textContent = sub || '';
+    subNode.hidden = !sub;
+  }
+}
+
 export const formatNumber = (n) => Number(n || 0).toLocaleString('id-ID');
 
 /** Toast pojok layar. Dipakai untuk semua notifikasi sukses/gagal. */

@@ -79,7 +79,9 @@ export const createPlan = (body) => post('/api/plan', body);
 export const listPlans = () => get('/api/plan');
 export const getPlan = (id) => get(`/api/plan/${id}`);
 export const deletePlan = (id) => del(`/api/plan/${id}`);
-export const planCaption = (planId, videoId, brief) => post(`/api/plan/${planId}/caption/${videoId}`, { brief });
+/** `platforms` opsional: kalau diisi, hanya platform itu yang ditulis ulang. */
+export const planCaption = (planId, videoId, brief, platforms) =>
+  post(`/api/plan/${planId}/caption/${videoId}`, { brief, platforms });
 export const sendPlanItem = (planId, index) => post(`/api/plan/${planId}/send/${index}`);
 export const planItemText = (planId, index) => get(`/api/plan/${planId}/text/${index}`);
 export const updatePlanItem = (planId, index, body) => patch(`/api/plan/${planId}/item/${index}`, body);

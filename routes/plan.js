@@ -32,6 +32,84 @@ function findPlan(id) {
   return { plans, plan };
 }
 
+// ---------- kelengkapan item ----------
+
+const videoMap = () => new Map(readVideos().map((v) => [v.id, v]));
+
+/**
+ * Lengkapi satu item dengan teks final + apa saja yang masih kurang.
+ *
+ * Sengaja DIHITUNG ULANG tiap kali jadwal dibaca, bukan disimpan di plans.json:
+ * caption, hashtag, tautan dan board Pinterest bisa berubah dari halaman lain
+ * kapan saja. Nilai yang tersimpan akan cepat basi dan justru menyesatkan.
+ *
+ * Ini yang membuat "belum lengkap" ketahuan SEBELUM tombol Kirim ditekan,
+ * bukan setelah Buffer menolak satu per satu.
+ */
+function decorateItem(item, plan, videos, now = Date.now()) {
+  const video = videos.get(item.videoId);
+  const { text, missing, warning } = buildPost({
+    platform: item.platform,
+    title: video?.title || '',
+    caption: video?.captions?.[item.platform] || '',
+    hashtags: tagsFor(plan.hashtagSetIds, item.platform),
+    link: resolveLink(video, item.platform),
+    boardId: item.boardId || boardFor(item.channelId)
+  });
+
+  const kurang = [];
+  if (!video) kurang.push('videonya sudah dihapus dari stok');
+  else if (!text.trim()) kurang.push(`caption ${item.platform} belum diisi`);
+  kurang.push(...missing);
+
+  const isPast = new Date(item.dueAt).getTime() <= now;
+
+  // `status` = apa yang tersimpan; `state` = apa yang perlu dilihat user.
+  const state = item.status === 'sent' ? 'sent'
+    : item.status === 'error' ? 'error'
+      : kurang.length ? 'kurang'
+        : isPast ? 'kedaluwarsa'
+          : 'siap';
+
+  return {
+    ...item,
+    isPast,
+    missing: kurang,
+    ready: !kurang.length && !isPast,
+    state,
+    caption: video?.captions?.[item.platform] || '',
+    preview: text.replace(/\s+/g, ' ').trim().slice(0, 160),
+    textLength: text.length,
+    lengthWarning: warning
+  };
+}
+
+/** Ringkasan sebuah jadwal — dipakai daftar maupun halaman detail. */
+function summarize(items, plan) {
+  const hitung = (fn) => items.filter(fn).length;
+  const belum = (i) => i.status !== 'sent';
+  const berikut = items
+    .filter((i) => belum(i) && !i.isPast)
+    .sort((a, b) => (a.dueAt < b.dueAt ? -1 : 1))[0] || null;
+
+  return {
+    total: items.length,
+    sent: hitung((i) => i.status === 'sent'),
+    error: hitung((i) => i.status === 'error'),
+    kurang: hitung((i) => belum(i) && i.missing.length),
+    siap: hitung((i) => belum(i) && i.ready),
+    kedaluwarsa: hitung((i) => belum(i) && i.isPast),
+    startDate: plan.startDate,
+    endDate: items.reduce((max, i) => (i.date > max ? i.date : max), plan.startDate),
+    videoCount: plan.videoIds?.length || 0,
+    channelCount: plan.channelIds?.length || 0,
+    berikutnya: berikut && {
+      date: berikut.date, time: berikut.time,
+      channelLabel: berikut.channelLabel, videoTitle: berikut.videoTitle
+    }
+  };
+}
+
 /** Kumpulkan bahan rotasi dari body request. */
 async function gather(body) {
   const { videoIds, channelIds, startDate, timezone, daysBetween, offsetStep, channelHours, days } = body || {};
@@ -78,7 +156,34 @@ router.post('/api/plan/preview', asyncHandler(async (req, res) => {
   const { videos, channels, options, queueError } = await gather(req.body);
   const result = buildRotation({ videos, channels, ...options });
   if (queueError) result.warnings.push(`Tidak bisa membaca antrian Buffer: ${queueError}`);
-  res.json({ ...result, queueLimit: QUEUE_LIMIT, timezone: options.timezone });
+
+  // Tandai tiap sel yang bahannya belum lengkap, supaya kekurangannya
+  // kelihatan di tabel pratinjau — bukan baru ketahuan saat dikirim.
+  const hashtagSetIds = req.body?.hashtagSetIds || [];
+  const byId = new Map(videos.map((v) => [v.id, v]));
+  const now = Date.now();
+
+  for (const row of result.matrix) {
+    for (const cell of row.cells) {
+      const video = byId.get(cell.videoId);
+      const { text, missing } = buildPost({
+        platform: row.platform,
+        title: video?.title || '',
+        caption: video?.captions?.[row.platform] || '',
+        hashtags: tagsFor(hashtagSetIds, row.platform),
+        link: resolveLink(video, row.platform),
+        boardId: boardFor(row.channelId)
+      });
+      const kurang = text.trim() ? [...missing] : [`caption ${row.platform} belum diisi`, ...missing];
+      cell.missing = kurang;
+      cell.isPast = zonedToUtc(cell.date, cell.time, options.timezone).getTime() <= now;
+      cell.ready = !kurang.length && !cell.isPast;
+    }
+  }
+
+  const belumLengkap = result.matrix.reduce((n, r) => n + r.cells.filter((c) => c.missing.length).length, 0);
+
+  res.json({ ...result, belumLengkap, queueLimit: QUEUE_LIMIT, timezone: options.timezone });
 }));
 
 // ---------- simpan jadwal ----------
@@ -113,22 +218,28 @@ router.post('/api/plan', asyncHandler(async (req, res) => {
 }));
 
 router.get('/api/plan', (req, res) => {
-  // Ringkasan saja — items bisa panjang sekali.
-  const plans = readPlans().map((p) => ({
-    id: p.id,
-    createdAt: p.createdAt,
-    startDate: p.startDate,
-    timezone: p.timezone,
-    total: p.items.length,
-    sent: p.items.filter((i) => i.status === 'sent').length,
-    failed: p.items.filter((i) => i.status === 'error').length
-  }));
+  // Ringkasan saja — items bisa panjang sekali. Tapi ringkasannya dibuat
+  // cukup lengkap supaya kartu di daftar bisa langsung menjawab
+  // "sudah sejauh mana" dan "apa yang berikutnya tayang".
+  const videos = videoMap();
+  const plans = readPlans().map((p) => {
+    const items = p.items.map((item) => decorateItem(item, p, videos));
+    return {
+      id: p.id,
+      createdAt: p.createdAt,
+      timezone: p.timezone,
+      ...summarize(items, p),
+      // nama lama tetap ada supaya pemanggil lama tidak pecah
+      failed: items.filter((i) => i.status === 'error').length
+    };
+  });
   res.json({ plans });
 });
 
 router.get('/api/plan/:id', asyncHandler(async (req, res) => {
   const { plan } = findPlan(req.params.id);
-  res.json({ plan });
+  const items = plan.items.map((item) => decorateItem(item, plan, videoMap()));
+  res.json({ plan: { ...plan, items }, ringkas: summarize(items, plan) });
 }));
 
 router.delete('/api/plan/:id', asyncHandler(async (req, res) => {
@@ -178,7 +289,7 @@ router.patch('/api/plan/:id/item/:index', asyncHandler(async (req, res) => {
   });
   writePlans(plans);
 
-  res.json({ item });
+  res.json({ item: decorateItem(item, plan, videoMap()) });
 }));
 
 /**
@@ -215,9 +326,11 @@ router.post('/api/plan/:id/reschedule', asyncHandler(async (req, res) => {
   plan.startDate = startDate;
   writePlans(plans);
 
-  const masihLewat = plan.items.filter((i) => i.isPast).length;
+  const items = plan.items.map((item) => decorateItem(item, plan, videoMap()));
+  const masihLewat = items.filter((i) => i.isPast && i.status !== 'sent').length;
   res.json({
-    plan,
+    plan: { ...plan, items },
+    ringkas: summarize(items, plan),
     diubah,
     dilewati,
     warning: masihLewat
@@ -238,8 +351,14 @@ router.post('/api/plan/:id/caption/:videoId', asyncHandler(async (req, res) => {
   const video = videos.find((v) => v.id === req.params.videoId);
   if (!video) throw new HttpError('Video tidak ditemukan', 404);
 
-  const platforms = [...new Set(plan.items.filter((i) => i.videoId === video.id).map((i) => i.platform))];
-  if (!platforms.length) throw new HttpError('Video ini tidak ada di jadwal tersebut', 400);
+  const dipakai = [...new Set(plan.items.filter((i) => i.videoId === video.id).map((i) => i.platform))];
+  if (!dipakai.length) throw new HttpError('Video ini tidak ada di jadwal tersebut', 400);
+
+  // Boleh dipersempit ke satu platform — dipakai tombol "Tulis ulang" di
+  // dalam baris item, supaya tidak menimpa caption platform lain yang
+  // barangkali sudah diedit tangan.
+  const diminta = Array.isArray(req.body?.platforms) ? req.body.platforms.filter((p) => dipakai.includes(p)) : [];
+  const platforms = diminta.length ? diminta : dipakai;
 
   const brief = (req.body?.brief || video.brief || video.title || '').trim();
   if (!brief) throw new HttpError('Video ini belum punya judul atau brief', 400);
@@ -259,7 +378,11 @@ router.post('/api/plan/:id/send/:index', asyncHandler(async (req, res) => {
   if (!item) throw new HttpError('Item jadwal tidak ditemukan', 404);
 
   if (item.status === 'sent') {
-    return res.json({ item, skipped: true, reason: 'Sudah terkirim sebelumnya' });
+    return res.json({
+      item: decorateItem(item, plan, videoMap()),
+      skipped: true,
+      reason: 'Sudah terkirim sebelumnya'
+    });
   }
 
   const video = readVideos().find((v) => v.id === item.videoId);
@@ -283,7 +406,7 @@ router.post('/api/plan/:id/send/:index', asyncHandler(async (req, res) => {
       ? `Belum lengkap: ${missing.join(', ')}`
       : `Belum ada teks untuk ${item.channelLabel}. Generate caption dulu.`;
     writePlans(plans);
-    return res.json({ item, usage: buffer.usageSnapshot() });
+    return res.json({ item: decorateItem(item, plan, videoMap()), usage: buffer.usageSnapshot() });
   }
 
   // Buffer mengunduh video dari PUBLIC_BASE_URL. Kalau URL-nya tidak bisa
@@ -293,7 +416,7 @@ router.post('/api/plan/:id/send/:index', asyncHandler(async (req, res) => {
     item.status = 'error';
     item.error = `Video tidak bisa diunduh Buffer: ${mediaCheck.reason}`;
     writePlans(plans);
-    return res.json({ item, mediaCheck, usage: buffer.usageSnapshot() });
+    return res.json({ item: decorateItem(item, plan, videoMap()), mediaCheck, usage: buffer.usageSnapshot() });
   }
 
   try {
@@ -319,7 +442,7 @@ router.post('/api/plan/:id/send/:index', asyncHandler(async (req, res) => {
   item.lengthWarning = warning;
   writePlans(plans);
 
-  res.json({ item, usage: buffer.usageSnapshot() });
+  res.json({ item: decorateItem(item, plan, videoMap()), usage: buffer.usageSnapshot() });
 }));
 
 /** Teks final yang AKAN dikirim, untuk pratinjau sebelum benar-benar dikirim. */
