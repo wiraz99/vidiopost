@@ -43,12 +43,12 @@ router.get('/api/channels/detail', asyncHandler(async (req, res) => {
 // Kontrak lama dipertahankan: { limit, counts }. Isinya sekarang dari Buffer.
 router.get('/api/queue', asyncHandler(async (req, res) => {
   const { channels } = await buffer.discoverChannels();
-  const { counts, errors } = await buffer.scheduledCounts();
+  const { counts, errors, fetchedAt, cached } = await buffer.scheduledCounts({ force: req.query.refresh === '1' });
 
   const full = {};
   for (const c of channels) full[c.id] = counts[c.id] || 0;
 
-  res.json({ limit: QUEUE_LIMIT, counts: full, errors, usage: buffer.usageSnapshot() });
+  res.json({ limit: QUEUE_LIMIT, counts: full, errors, fetchedAt, cached, usage: buffer.usageSnapshot() });
 }));
 
 router.get('/api/usage', (req, res) => res.json(buffer.usageSnapshot()));

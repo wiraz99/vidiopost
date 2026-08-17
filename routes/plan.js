@@ -49,7 +49,9 @@ async function gather(body) {
   let existingScheduled = {};
   let queueError = null;
   try {
-    ({ counts: existingScheduled } = await buffer.scheduledCounts());
+    // Pratinjau boleh memakai data agak lama — angkanya cuma untuk peringatan,
+    // dan pratinjau dihitung ulang tiap kali user mencentang sesuatu.
+    ({ counts: existingScheduled } = await buffer.scheduledCounts({ maxAgeMs: 30 * 60 * 1000 }));
   } catch (err) {
     queueError = err.message;
   }
