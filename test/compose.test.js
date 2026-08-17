@@ -47,8 +47,14 @@ test('Pinterest wajib punya boardServiceId', () => {
   assert.deepStrictEqual(denganBoard.missing, []);
 });
 
-test('TikTok, Facebook, Threads tidak butuh metadata', () => {
-  for (const platform of ['tiktok', 'facebook', 'threads']) {
+test('Facebook wajib punya type — sama seperti Instagram', () => {
+  const { metadata, missing } = buildPost({ ...base, platform: 'facebook' });
+  assert.strictEqual(metadata.facebook.type, 'reel');
+  assert.deepStrictEqual(missing, []);
+});
+
+test('TikTok & Threads tidak butuh metadata', () => {
+  for (const platform of ['tiktok', 'threads']) {
     const { metadata, missing } = buildPost({ ...base, platform });
     assert.strictEqual(metadata, null, platform);
     assert.deepStrictEqual(missing, [], platform);

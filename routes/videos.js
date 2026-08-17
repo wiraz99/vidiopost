@@ -135,39 +135,7 @@ router.get('/api/media/check', asyncHandler(async (req, res) => {
 
   if (!video) return res.json({ ok: false, reason: 'Belum ada video di stok untuk diuji.' });
 
-  const url = media.publicUrl(video.filename);
-  const result = {
-    url,
-    filename: video.filename,
-    adaDiDisk: media.fileExists(video.filename),
-    baseUrlTerlihatLokal: media.baseUrlLooksLocal()
-  };
-
-  if (!result.adaDiDisk) {
-    return res.json({ ...result, ok: false, reason: 'File tidak ada di disk server. Volume penyimpanan kemungkinan tidak ter-mount.' });
-  }
-  if (result.baseUrlTerlihatLokal) {
-    return res.json({ ...result, ok: false, reason: `PUBLIC_BASE_URL berisi alamat lokal (${media.PUBLIC_BASE_URL}) — mustahil dijangkau Buffer dari luar.` });
-  }
-
-  try {
-    // Minta 1KB pertama saja: cukup untuk membuktikan URL-nya bisa diakses
-    // publik tanpa mengunduh seluruh video.
-    const probe = await fetch(url, { headers: { Range: 'bytes=0-1023' } });
-    result.status = probe.status;
-    result.contentType = probe.headers.get('content-type');
-    result.acceptRanges = probe.headers.get('accept-ranges');
-
-    if (probe.status !== 200 && probe.status !== 206) {
-      return res.json({ ...result, ok: false, reason: `URL membalas HTTP ${probe.status}. Buffer tidak akan bisa mengunduhnya.` });
-    }
-    if (!/^video\//i.test(result.contentType || '')) {
-      return res.json({ ...result, ok: false, reason: `Content-Type "${result.contentType}" bukan video. Kemungkinan yang terbuka halaman login atau halaman error, bukan filenya.` });
-    }
-    return res.json({ ...result, ok: true, reason: 'Video bisa diunduh dari luar.' });
-  } catch (err) {
-    return res.json({ ...result, ok: false, reason: `Tidak bisa menghubungi ${url} — ${err.message}` });
-  }
+  res.json(await media.checkPublicUrl(video.filename, { force: req.query.refresh === '1' }));
 }));
 
 /** Uji koneksi ke Hermes. Dipakai tombol diagnosa di halaman Stok. */

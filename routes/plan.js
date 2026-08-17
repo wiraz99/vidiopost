@@ -207,6 +207,16 @@ router.post('/api/plan/:id/send/:index', asyncHandler(async (req, res) => {
     return res.json({ item, usage: buffer.usageSnapshot() });
   }
 
+  // Buffer mengunduh video dari PUBLIC_BASE_URL. Kalau URL-nya tidak bisa
+  // dibaca, post pasti ditolak — jadi dicek dulu supaya kuota tidak terbuang.
+  const mediaCheck = await media.checkPublicUrl(video.filename);
+  if (!mediaCheck.ok) {
+    item.status = 'error';
+    item.error = `Video tidak bisa diunduh Buffer: ${mediaCheck.reason}`;
+    writePlans(plans);
+    return res.json({ item, mediaCheck, usage: buffer.usageSnapshot() });
+  }
+
   try {
     const post = await buffer.createPost({
       account: item.account,

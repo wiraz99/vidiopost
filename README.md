@@ -142,8 +142,8 @@ Penyebab paling sering:
 - **Tidak ada mode "publish sekarang"** yang terdokumentasi. Yang dipakai
   `customScheduled` + `dueAt`. Kalau probe menemukan `shareNow`, ganti di `lib/buffer.js`.
 - **Tiap platform punya field wajib sendiri** lewat `metadata` (PostInputMetaData).
-  Tanpa itu post ditolak: Instagram butuh `type`, YouTube butuh `title` + `categoryId`,
-  Pinterest butuh `boardServiceId`. Diatur di `lib/compose.js`; yang belum
+  Tanpa itu post ditolak: Instagram **dan Facebook** butuh `type`, YouTube butuh
+  `title` + `categoryId`, Pinterest butuh `boardServiceId`. Diatur di `lib/compose.js`; yang belum
   terisi dicegat sebelum request dikirim supaya tidak membakar kuota.
 - **Token wajib punya scope `posts:write`.** Tanpa itu semua pengiriman ditolak
   dengan "Insufficient scope", dan itu hanya bisa diperbaiki dari dashboard Buffer.
