@@ -178,6 +178,37 @@ function diagnosaPanel() {
     body.append(detail);
     row.append(body);
 
+    // Hasil pemeriksaan jalur kedua, khusus channel yang metrik per-postnya kosong.
+    if (!d.withMetrics && d.agregat) {
+      const a = d.agregat;
+      const ag = el('div', 'diagrow-detail');
+      if (a.error) {
+        ag.append(el('span', 'bad-text', `Agregat gagal: ${a.error}`));
+      } else if (a.adaAngka) {
+        ag.append(el('span', null,
+          `Agregat Buffer: ${a.metrics.map((m) => `${m.label} ${formatNumber(m.value)}`).join(' · ')}`));
+      } else {
+        ag.append(el('span', null,
+          `Agregat Buffer: ${a.postCount ?? 0} post, semua angkanya nol`));
+      }
+      body.append(ag);
+    }
+
+    // Balasan mentah — supaya "sebenarnya Buffer bilang apa" tidak perlu terminal.
+    if (d.mentah) {
+      const lihat = el('button', 'linkbtn');
+      lihat.type = 'button';
+      lihat.textContent = 'lihat balasan mentah Buffer';
+      const pre = el('pre', 'finaltext');
+      pre.hidden = true;
+      pre.textContent = JSON.stringify(d.mentah, null, 2);
+      lihat.onclick = () => {
+        pre.hidden = !pre.hidden;
+        lihat.textContent = pre.hidden ? 'lihat balasan mentah Buffer' : 'tutup balasan mentah';
+      };
+      body.append(lihat, pre);
+    }
+
     const status = d.withMetrics
       ? el('span', 'badge badge-sent', 'ada data')
       : el('span', `badge badge-${d.sentCount ? 'error' : 'draft'}`, d.sentCount ? 'kosong' : 'belum ada post');
@@ -218,13 +249,25 @@ function platformPanel() {
     head.append(el('span', 'muted', `${p.postCount} post`));
     card.append(head);
 
-    if (!p.metrics.length) {
-      card.append(el('p', 'mempty', 'Belum ada metrik dari Buffer untuk platform ini.'));
-    } else {
+    if (p.metrics.length) {
       for (const m of p.metrics) card.append(metricRow(m));
       if (p.withMetrics < p.postCount) {
         card.append(el('p', 'note', `${p.postCount - p.withMetrics} post belum punya angka.`));
       }
+    } else if (p.agregat?.adaAngka) {
+      // Metrik per-post kosong, tapi ringkasan agregat Buffer punya angkanya.
+      for (const m of p.agregat.metrics) {
+        card.append(metricRow({ label: m.label, total: m.value, average: m.value, percent: false }));
+      }
+      card.append(el('p', 'note', 'Dari ringkasan agregat Buffer — platform ini tidak melaporkan angka per post.'));
+    } else if (p.agregat?.postCount) {
+      card.append(el('p', 'mempty',
+        `Buffer melihat ${p.agregat.postCount} post di platform ini, tapi semua angkanya nol. ` +
+        'Jaringannya memang tidak melaporkan reaksi/komentar ke Buffer.'));
+    } else if (p.agregat?.error) {
+      card.append(el('p', 'mempty bad-text', `Pemeriksaan agregat gagal: ${p.agregat.error}`));
+    } else {
+      card.append(el('p', 'mempty', 'Belum ada metrik dari Buffer untuk platform ini.'));
     }
     grid.append(card);
   }

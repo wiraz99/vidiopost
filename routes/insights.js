@@ -34,6 +34,7 @@ const SEHARI_MS = 24 * 60 * 60 * 1000;
 // sini tetap tampil memakai nama dari Buffer sendiri — jangan sampai metrik
 // baru hilang cuma karena belum sempat diterjemahkan.
 const METRIC_LABEL = {
+  postcount: 'Jumlah post',
   views: 'Views',
   impressions: 'Impresi',
   reach: 'Jangkauan',
@@ -117,9 +118,54 @@ function aggregate(rows) {
     .sort((a, b) => orderOf(a.key) - orderOf(b.key));
 }
 
+// Jangan sampai satu penyegaran menghabiskan kuota harian gara-gara banyak
+// channel diam sekaligus.
+const MAX_AGREGAT = 6;
+
+/**
+ * Untuk channel yang punya post terkirim tapi TIDAK SATU PUN metrik per-post,
+ * coba jalur kedua: query agregat. Balasannya selalu memuat postCount,
+ * reactions dan comments, jadi hasilnya menjawab dua hal sekaligus —
+ * apakah Buffer benar-benar melihat post itu, dan apakah ada angkanya.
+ */
+async function ambilAgregat(posts) {
+  const perChannel = new Map();
+  for (const post of posts) {
+    if (!perChannel.has(post.channelId)) {
+      perChannel.set(post.channelId, { account: post.account, adaMetrik: false, waktu: [] });
+    }
+    const entri = perChannel.get(post.channelId);
+    if ((post.metrics || []).some((m) => m?.value != null)) entri.adaMetrik = true;
+    const waktu = post.sentAt || post.dueAt;
+    if (waktu) entri.waktu.push(new Date(waktu).getTime());
+  }
+
+  const bisu = [...perChannel.entries()].filter(([, e]) => !e.adaMetrik).slice(0, MAX_AGREGAT);
+  const hasil = {};
+
+  for (const [channelId, entri] of bisu) {
+    // Rentangnya dilebarkan sehari di kedua ujung; batas atas Buffer 365 hari.
+    const paling = entri.waktu.length ? Math.min(...entri.waktu) : Date.now() - 30 * SEHARI_MS;
+    const mulai = Math.max(paling - SEHARI_MS, Date.now() - 364 * SEHARI_MS);
+    try {
+      const { metrics, metricsUpdatedAt } = await buffer.aggregatedMetrics({
+        account: entri.account,
+        channelIds: [channelId],
+        startDateTime: new Date(mulai).toISOString(),
+        endDateTime: new Date(Date.now() + SEHARI_MS).toISOString()
+      });
+      hasil[channelId] = { metrics, metricsUpdatedAt };
+    } catch (err) {
+      hasil[channelId] = { error: err.message, metrics: [] };
+    }
+  }
+  return hasil;
+}
+
 async function refreshCache() {
   const { posts, errors, reduced } = await buffer.sentPostsWithMetrics({ first: 100 });
-  const cache = { fetchedAt: new Date().toISOString(), posts, errors, reduced };
+  const agregat = await ambilAgregat(posts);
+  const cache = { fetchedAt: new Date().toISOString(), posts, errors, reduced, agregat };
   store.write('metrics-cache', cache);
   return cache;
 }
@@ -208,18 +254,42 @@ router.get('/api/insights', asyncHandler(async (req, res) => {
   const berangka = rows.filter((r) => r.metricCount > 0);
 
   // ---------- diagnosa per channel: ini yang menjawab "kok platform X kosong" ----------
+
+  // Balasan mentah Buffer untuk satu post tiap channel. Ditampilkan apa adanya
+  // di halaman supaya pertanyaan "sebenarnya Buffer bilang apa" tidak pernah
+  // lagi jadi tebak-tebakan yang butuh akses terminal.
+  const mentahPer = new Map();
+  for (const post of rawPosts) {
+    if (mentahPer.has(post.channelId)) continue;
+    mentahPer.set(post.channelId, {
+      postId: post.id,
+      metrics: post.metrics === undefined ? '(field tidak ada)' : post.metrics,
+      metricsUpdatedAt: post.metricsUpdatedAt ?? null
+    });
+  }
+
+  const agregatCache = cache?.agregat || {};
   const diagnosa = [];
   const terpakai = new Set();
 
   for (const channel of channels) {
     const list = rows.filter((r) => r.channelId === channel.id);
     list.forEach((r) => terpakai.add(r.postId));
-    diagnosa.push(ringkasChannel(channel.label, channel.platform, list));
+    diagnosa.push(ringkasChannel(channel.id, channel.label, channel.platform, list, {
+      agregat: agregatCache[channel.id],
+      mentah: mentahPer.get(channel.id)
+    }));
   }
   // Post dari channel yang tidak ada di daftar (mis. sudah diputus di Buffer).
   const sisa = rows.filter((r) => !terpakai.has(r.postId));
   for (const [channelId, list] of groupBy(sisa, (r) => r.channelId)) {
-    diagnosa.push({ ...ringkasChannel(list[0].channelLabel, list[0].platform, list), channelId, takDikenal: true });
+    diagnosa.push({
+      ...ringkasChannel(channelId, list[0].channelLabel, list[0].platform, list, {
+        agregat: agregatCache[channelId],
+        mentah: mentahPer.get(channelId)
+      }),
+      takDikenal: true
+    });
   }
 
   // ---------- catatan yang perlu dibaca sebelum menyimpulkan ----------
@@ -231,13 +301,35 @@ router.get('/api/insights', asyncHandler(async (req, res) => {
       'jaringan sekali sehari, jadi angkanya wajar kalau belum muncul.'
     );
   }
-  const bisu = diagnosa.filter((d) => d.sentCount > 0 && d.withMetrics === 0);
-  if (bisu.length) {
-    catatan.push(
-      `Belum ada metrik sama sekali dari: ${bisu.map((d) => d.label).join(', ')}. ` +
-      'Kalau post-nya sudah lebih dari sehari, kemungkinan jaringan itu memang belum ' +
-      'melaporkan apa pun ke Buffer.'
-    );
+  // Channel yang diam dijelaskan satu per satu — "belum ada metrik" saja tidak
+  // memberi tahu apakah masalahnya di Buffer, di jaringannya, atau cuma
+  // belum lewat 24 jam. Jawabannya datang dari query agregat.
+  for (const d of diagnosa.filter((x) => x.sentCount > 0 && x.withMetrics === 0)) {
+    const a = d.agregat;
+    if (!a) {
+      catatan.push(
+        `${d.label}: ${d.sentCount} post terkirim tapi belum ada metrik. Tekan ` +
+        '"Ambil data terbaru" supaya diperiksa lewat jalur agregat Buffer.'
+      );
+    } else if (a.error) {
+      catatan.push(`${d.label}: pemeriksaan agregat gagal — ${a.error}`);
+    } else if (a.adaAngka) {
+      catatan.push(
+        `${d.label}: metrik per-post kosong, tapi ringkasan agregat Buffer ada angkanya. ` +
+        'Angka itulah yang dipakai di kartu platform.'
+      );
+    } else if (a.postCount > 0) {
+      catatan.push(
+        `${d.label}: Buffer melihat ${a.postCount} post di channel ini, tapi semua angkanya nol. ` +
+        'Jaringan ini memang tidak melaporkan reaksi/komentar ke Buffer — bukan setelan yang salah ' +
+        'di aplikasi ini.'
+      );
+    } else {
+      catatan.push(
+        `${d.label}: query agregat tidak menemukan satu pun post di rentang ini, padahal daftar ` +
+        `post terkirim memuat ${d.sentCount}. Datanya belum sinkron di sisi Buffer.`
+      );
+    }
   }
   if (cache?.reduced) {
     catatan.push('Buffer menolak sebagian field baru, jadi dipakai query cadangan yang lebih sederhana.');
@@ -246,12 +338,17 @@ router.get('/api/insights', asyncHandler(async (req, res) => {
 
   // ---------- pengelompokan ----------
   const byPlatform = [...groupBy(rows, (r) => r.platform)]
-    .map(([platform, list]) => ({
-      platform,
-      postCount: list.length,
-      withMetrics: list.filter((r) => r.metricCount > 0).length,
-      metrics: aggregate(list)
-    }))
+    .map(([platform, list]) => {
+      const channelIds = [...new Set(list.map((r) => r.channelId))];
+      return {
+        platform,
+        postCount: list.length,
+        withMetrics: list.filter((r) => r.metricCount > 0).length,
+        metrics: aggregate(list),
+        // Cadangan untuk platform yang metrik per-postnya tidak pernah terisi.
+        agregat: gabungAgregat(channelIds.map((id) => diagnosa.find((d) => d.channelId === id)?.agregat))
+      };
+    })
     .sort((a, b) => b.withMetrics - a.withMetrics || b.postCount - a.postCount);
 
   // Satu video tayang di beberapa channel — inilah perbandingan yang paling
@@ -297,7 +394,9 @@ router.get('/api/insights', asyncHandler(async (req, res) => {
 
   res.json({
     available: true,
-    punyaAngka: berangka.length > 0,
+    // Angka dari jalur agregat ikut dihitung "ada" — kalau tidak, halaman
+    // menutup diri padahal ada data yang bisa ditampilkan.
+    punyaAngka: berangka.length > 0 || byPlatform.some((p) => p.agregat?.adaAngka),
     fetchedAt: cache.fetchedAt,
     ttlHours: TTL_MS / 3600000,
     refreshError,
@@ -322,16 +421,66 @@ router.get('/api/insights', asyncHandler(async (req, res) => {
   });
 }));
 
-function ringkasChannel(label, platform, list) {
+function ringkasChannel(channelId, label, platform, list, extra = {}) {
   const keys = new Set();
   for (const row of list) for (const key of Object.keys(row.metrics)) keys.add(key);
   return {
+    channelId,
     label,
     platform,
     sentCount: list.length,
     withMetrics: list.filter((r) => r.metricCount > 0).length,
     lastUpdate: list.map((r) => r.metricsUpdatedAt).filter(Boolean).sort().at(-1) || null,
-    metrics: [...keys].sort((a, b) => orderOf(a) - orderOf(b)).map((k) => METRIC_LABEL[k] || k)
+    metrics: [...keys].sort((a, b) => orderOf(a) - orderOf(b)).map((k) => METRIC_LABEL[k] || k),
+    agregat: ringkasAgregat(extra.agregat),
+    mentah: extra.mentah || null
+  };
+}
+
+/**
+ * Rapikan hasil query agregat. `postCount` dipisah dari metrik lain karena
+ * dia menjawab pertanyaan yang berbeda: apakah Buffer melihat post-nya sama
+ * sekali, terlepas dari ada tidaknya angka performa.
+ */
+function ringkasAgregat(entri) {
+  if (!entri) return null;
+  if (entri.error) return { error: entri.error };
+
+  const semua = normalizeMetrics(entri.metrics);
+  const postCount = semua.postcount ? semua.postcount.value : null;
+  delete semua.postcount;
+
+  const daftar = Object.values(semua).sort((a, b) => orderOf(a.key) - orderOf(b.key));
+  return {
+    postCount,
+    metrics: daftar.map((m) => ({ key: m.key, label: m.label, value: m.value })),
+    adaAngka: daftar.some((m) => m.value > 0),
+    metricsUpdatedAt: entri.metricsUpdatedAt || null
+  };
+}
+
+/** Gabungkan hasil agregat beberapa channel jadi satu untuk kartu platform. */
+function gabungAgregat(daftar) {
+  const map = new Map();
+  let postCount = 0;
+  let ada = false;
+
+  for (const a of daftar) {
+    if (!a || a.error) continue;
+    ada = true;
+    postCount += a.postCount || 0;
+    for (const m of a.metrics) {
+      const acc = map.get(m.key) || { key: m.key, label: m.label, value: 0 };
+      acc.value += m.value;
+      map.set(m.key, acc);
+    }
+  }
+  if (!ada) return null;
+
+  return {
+    postCount,
+    metrics: [...map.values()].sort((a, b) => orderOf(a.key) - orderOf(b.key)),
+    adaAngka: [...map.values()].some((m) => m.value > 0)
   };
 }
 
