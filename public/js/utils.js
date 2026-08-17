@@ -35,6 +35,70 @@ export function platformDot(platform) {
   return dot;
 }
 
+/**
+ * Thumbnail video.
+ *
+ * Elemen <video> dengan preload="metadata" cuma mengambil durasi & dimensi —
+ * tidak ada satu frame pun yang di-decode, jadi kotaknya tampil kosong/hitam.
+ * Supaya muncul gambar, videonya harus dipaksa melompat ke detik tertentu.
+ *
+ * Loncatnya ke 10% durasi (maksimal 1 detik), bukan ke detik 0, karena banyak
+ * video dibuka dengan fade-in dari hitam — frame pertama justru gelap.
+ *
+ * Pemuatan ditunda sampai elemennya kelihatan di layar; menarik metadata
+ * sepuluh video sekaligus terlalu berat untuk koneksi HP.
+ */
+const thumbObserver = 'IntersectionObserver' in window
+  ? new IntersectionObserver((entries, obs) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        obs.unobserve(entry.target);
+        loadThumb(entry.target);
+      }
+    }, { rootMargin: '200px' })
+  : null;
+
+function loadThumb(video) {
+  if (video.dataset.loaded) return;
+  video.dataset.loaded = '1';
+
+  video.addEventListener('loadedmetadata', () => {
+    const target = Math.min(1, (video.duration || 2) * 0.1);
+    if (Number.isFinite(target) && target > 0) {
+      try {
+        video.currentTime = target;
+      } catch {
+        // sebagian browser menolak seek sebelum siap — biarkan, fragmen #t sudah jadi cadangan
+      }
+    }
+  }, { once: true });
+
+  video.addEventListener('error', () => {
+    // Video tidak bisa diambil (URL salah / file hilang) — tampilkan penanda,
+    // jangan biarkan kotak hitam tanpa keterangan.
+    const fallback = el('div', video.className + ' thumb-fallback');
+    fallback.title = 'Video tidak bisa dimuat — cek PUBLIC_BASE_URL';
+    fallback.innerHTML = iconSvg('alert', 16);
+    video.replaceWith(fallback);
+  }, { once: true });
+
+  // Fragmen media #t= jadi cadangan untuk browser yang mengabaikan seek manual.
+  video.src = `${video.dataset.src}#t=0.1`;
+}
+
+export function videoThumb(url, className = 'vthumb') {
+  const video = el('video', className);
+  video.muted = true;
+  video.playsInline = true;
+  video.preload = 'metadata';
+  video.dataset.src = url;
+
+  if (thumbObserver) thumbObserver.observe(video);
+  else loadThumb(video);
+
+  return video;
+}
+
 /** Tombol dengan ikon di kiri teks. */
 export function button(className, iconName, label) {
   const btn = el('button', className);

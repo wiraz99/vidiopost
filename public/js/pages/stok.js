@@ -5,7 +5,7 @@
 import * as api from '../api.js';
 import {
   el, html, toast, busy, formatBytes, debounce, escapeHtml,
-  icon, iconSvg, button, iconButton
+  icon, iconSvg, button, iconButton, videoThumb
 } from '../utils.js';
 
 let videos = [];
@@ -150,12 +150,7 @@ function buildRow(video, index) {
 
   const num = el('span', 'vnum', `V${index + 1}`);
 
-  // --- thumbnail ---
-  const thumb = el('video', 'vthumb');
-  thumb.src = video.url;
-  thumb.muted = true;
-  thumb.playsInline = true;
-  thumb.preload = 'metadata';
+  const thumb = videoThumb(video.url);
 
   // --- badan ---
   const body = el('div', 'vbody');

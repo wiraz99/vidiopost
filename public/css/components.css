@@ -196,7 +196,20 @@ input[type="checkbox"] { accent-color: var(--accent); }
 .vrow:hover .vhandle { color: var(--muted); }
 .vhandle:active { cursor: grabbing; }
 
-.vthumb { width: 52px; height: 52px; border-radius: var(--r-xs); object-fit: cover; background: var(--surface-3); }
+.vthumb {
+  width: 52px; height: 52px; flex: none;
+  border-radius: var(--r-xs);
+  object-fit: cover;
+  background: var(--surface-3);
+  /* Sebelum ada frame yang ter-decode, <video> dirender hitam di sebagian
+     browser. Ditipiskan supaya tidak terlihat seperti kotak rusak. */
+  color-scheme: light;
+}
+.thumb-fallback {
+  display: grid; place-items: center;
+  color: var(--muted);
+  border: 1px solid var(--line);
+}
 .vbody { min-width: 0; }
 .vtitle { font-weight: 500; font-size: 14px; letter-spacing: -0.008em; }
 .vtitle-input { font-weight: 500; border-color: transparent; background: transparent; padding-left: 0; }
