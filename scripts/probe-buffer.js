@@ -236,7 +236,7 @@ async function probeToken(label, token) {
       report.pinterestBoardsError = boardErr;
     } else {
       report.pinterestBoards = boardRes.data?.channel?.metadata?.boards || [];
-      console.log('\n✅ BOARD PINTEREST — salin salah satu id ke PINTEREST_BOARD_ID:');
+      console.log('\n✅ BOARD PINTEREST (normalnya cukup dipilih di halaman Pengaturan):');
       for (const b of report.pinterestBoards) {
         console.log(`   ${String(b.name || '').padEnd(28)} ${b.serviceId}`);
       }
@@ -286,8 +286,12 @@ async function probeToken(label, token) {
         console.log(`     ${String(m.name).padEnd(20)} ${m.value} ${m.unit || ''}`);
       }
     } else {
-      console.log(`⚠️  METRICS KOSONG — ada ${nodes.length} post terkirim tapi semua nilainya null.`);
-      console.log('   → Kemungkinan besar dikunci paket Free. Fase 5 perlu rencana pengganti.');
+      console.log(`⚠️  METRICS KOSONG — ada ${nodes.length} post terkirim tapi belum ada angkanya.`);
+      console.log('   → Ini BUKAN soal paket: API Buffer tersedia di semua paket termasuk Free.');
+      console.log('   → Buffer menarik metrik dari tiap jaringan sekali sehari, dan post baru');
+      console.log('     butuh sampai ~24 jam. Cek lagi besok.');
+      console.log('   → Halaman Insight di aplikasi sudah menampilkan rincian per channel,');
+      console.log('     jadi biasanya tidak perlu menjalankan script ini.');
     }
     console.log('*'.repeat(64));
   }

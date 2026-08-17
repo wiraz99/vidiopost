@@ -41,5 +41,12 @@ export const NAV = [
   { path: '/riwayat', label: 'Riwayat', full: 'Riwayat',    icon: 'clock' }
 ];
 
+// Tidak ikut ke bottom-nav: tujuh tombol di layar 360px jadi terlalu sempit,
+// dan ini bukan halaman yang dibuka tiap hari. Di HP tempatnya ikon gerigi
+// di topbar; di desktop ikut sidebar, dipisah garis.
+export const NAV_SECONDARY = [
+  { path: '/pengaturan', label: 'Setelan', full: 'Pengaturan', icon: 'settings' }
+];
+
 export const limitsFor = (platform) => PLATFORM_LIMITS[platform] || PLATFORM_LIMITS.default;
 export const metaFor = (platform) => PLATFORM_META[platform] || PLATFORM_META.default;

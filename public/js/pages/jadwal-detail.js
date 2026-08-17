@@ -362,6 +362,7 @@ function sentInfo(item) {
   const box = el('div', 'row');
   box.append(el('span', 'muted',
     `Terkirim ke Buffer${item.sentAt ? ` pada ${new Date(item.sentAt).toLocaleString('id-ID')}` : ''}.`));
+  if (item.sentMode === 'shareNow') box.append(el('span', 'badge badge-siap', 'dikirim langsung'));
   if (item.bufferPostId) {
     const a = el('a', 'linkbtn', 'Lihat di Buffer');
     a.href = 'https://publish.buffer.com/all-channels';
@@ -510,9 +511,23 @@ function waktuBaris(item) {
   kiri.append(tanggal, jam);
   row.append(kiri);
 
-  const kirim = button('btn btn-primary btn-sm', 'send', 'Kirim item ini');
+  const aksi = el('div', 'row');
+  aksi.style.gap = '6px';
+
+  // Tayang langsung, tidak menunggu jadwal di sebelah kiri.
+  const sekarang = button('btn btn-ghost btn-sm', 'bolt', 'Kirim sekarang');
+  sekarang.title = 'Tayangkan langsung, abaikan jadwal item ini';
+  sekarang.onclick = (e) => {
+    if (!confirm(`Tayangkan "${item.videoTitle}" di ${item.channelLabel} SEKARANG?\n\n` +
+      'Jadwal item ini diabaikan dan post langsung dikirim ke platformnya.')) return;
+    sendItems(e.currentTarget, [item], true);
+  };
+
+  const kirim = button('btn btn-primary btn-sm', 'send', 'Kirim sesuai jadwal');
   kirim.onclick = (e) => sendItems(e.currentTarget, [item]);
-  row.append(kirim);
+
+  aksi.append(sekarang, kirim);
+  row.append(aksi);
 
   return row;
 }
@@ -550,7 +565,7 @@ async function generateCaptions(trigger, target) {
   await refresh();
 }
 
-async function sendItems(trigger, items) {
+async function sendItems(trigger, items, sekarang = false) {
   const pending = items.filter((i) => i.status !== 'sent');
   if (!pending.length) return toast('Tidak ada yang perlu dikirim.', 'ok');
 
@@ -570,9 +585,12 @@ async function sendItems(trigger, items) {
   for (const [i, item] of pending.entries()) {
     trigger.innerHTML = `<span class="spin"></span> Mengirim ${i + 1}/${pending.length}`;
     try {
-      const { item: updated } = await api.sendPlanItem(plan.id, item.index);
+      const { item: updated, catatan } = await api.sendPlanItem(plan.id, item.index, sekarang);
       Object.assign(plan.items[item.index], updated);
       if (updated.status === 'sent') ok++;
+      // Buffer bisa menolak mode "kirim sekarang" dan post dimundurkan —
+      // itu harus dibilang, bukan didiamkan.
+      if (catatan) toast(catatan, 'bad');
     } catch (err) {
       Object.assign(plan.items[item.index], { status: 'error', state: 'error', error: err.message });
       // Kalau kuota API habis, tidak ada gunanya melanjutkan.

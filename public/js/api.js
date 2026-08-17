@@ -82,7 +82,9 @@ export const deletePlan = (id) => del(`/api/plan/${id}`);
 /** `platforms` opsional: kalau diisi, hanya platform itu yang ditulis ulang. */
 export const planCaption = (planId, videoId, brief, platforms) =>
   post(`/api/plan/${planId}/caption/${videoId}`, { brief, platforms });
-export const sendPlanItem = (planId, index) => post(`/api/plan/${planId}/send/${index}`);
+/** `sekarang: true` memakai mode shareNow Buffer, bukan jadwal item ini. */
+export const sendPlanItem = (planId, index, sekarang = false) =>
+  post(`/api/plan/${planId}/send/${index}`, { sekarang });
 export const planItemText = (planId, index) => get(`/api/plan/${planId}/text/${index}`);
 export const updatePlanItem = (planId, index, body) => patch(`/api/plan/${planId}/item/${index}`, body);
 export const reschedulePlan = (planId, startDate) => post(`/api/plan/${planId}/reschedule`, { startDate });
@@ -92,6 +94,10 @@ export const listLinks = () => get('/api/links');
 export const createLink = (body) => post('/api/links', body);
 export const updateLink = (id, body) => patch(`/api/links/${id}`, body);
 export const deleteLink = (id) => del(`/api/links/${id}`);
+
+// ---------- pengaturan ----------
+export const getSettings = () => get('/api/settings');
+export const saveSettings = (body) => patch('/api/settings', body);
 
 // ---------- diagnosa AI ----------
 export const testAI = () => get('/api/ai/test');

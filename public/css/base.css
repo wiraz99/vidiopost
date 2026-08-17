@@ -143,6 +143,13 @@ p { margin: 0; }
 .nav a:hover .ico { color: var(--text-2); }
 .nav a.active { background: var(--surface-3); color: var(--text); font-weight: 600; }
 .nav a.active .ico { color: var(--accent); }
+/* pemisah sebelum menu sekunder (Pengaturan) */
+.nav a.nav-sep { margin-top: var(--s3); padding-top: var(--s3); border-top: 1px solid var(--line); border-radius: 0 0 var(--r-sm) var(--r-sm); }
+
+/* Pintu masuk Pengaturan di topbar — hanya untuk layar kecil; di desktop
+   tempatnya sudah ada di sidebar. */
+.settings-link { text-decoration: none; }
+.settings-link.active { color: var(--accent); background: var(--surface-2); }
 
 .sidebar-foot { margin-top: auto; padding: var(--s4); }
 .usage { font-size: 11.5px; color: var(--muted); }
@@ -188,7 +195,7 @@ p { margin: 0; }
   }
 
   .topbar { padding: 0 var(--s7); }
-  .topbar .brand-mark, .bottomnav { display: none; }
+  .topbar .brand-mark, .bottomnav, .settings-link { display: none; }
   .topbar h1 { font-size: 19px; }
 
   .main { padding: var(--s7) var(--s7) var(--s8); }

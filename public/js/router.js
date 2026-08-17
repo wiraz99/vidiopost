@@ -2,7 +2,7 @@
  * Router hash sederhana. Tiap halaman adalah modul yang diimpor saat
  * pertama kali dibuka, dan mengekspor `render(container)`.
  */
-import { NAV } from './config.js';
+import { NAV, NAV_SECONDARY } from './config.js';
 import { el, qsa, icon } from './utils.js';
 
 const routes = {
@@ -12,8 +12,11 @@ const routes = {
   '/hashtag':     () => import('./pages/hashtag.js'),
   '/tautan':      () => import('./pages/tautan.js'),
   '/insight':     () => import('./pages/insight.js'),
-  '/riwayat':     () => import('./pages/riwayat.js')
+  '/riwayat':     () => import('./pages/riwayat.js'),
+  '/pengaturan':  () => import('./pages/pengaturan.js')
 };
+
+const ALL_NAV = [...NAV, ...NAV_SECONDARY];
 
 const DEFAULT_ROUTE = '/stok';
 
@@ -28,10 +31,13 @@ export const navigate = (path) => { location.hash = path; };
 
 function buildNav(container, isSidebar) {
   container.innerHTML = '';
-  for (const item of NAV) {
+  // Menu sekunder hanya di sidebar; bottom-nav dijaga tetap enam.
+  const daftar = isSidebar ? ALL_NAV : NAV;
+  for (const item of daftar) {
     const link = el('a');
     link.href = `#${item.path}`;
     link.dataset.path = item.path;
+    if (isSidebar && item === NAV_SECONDARY[0]) link.classList.add('nav-sep');
     link.append(icon(item.icon, isSidebar ? 17 : 20));
     link.append(el('span', 'nav-label', isSidebar ? (item.full || item.label) : item.label));
     container.append(link);
@@ -43,16 +49,16 @@ function buildNav(container, isSidebar) {
  * menyorot "Jadwal", bukan tidak menyorot apa pun.
  */
 const navPathFor = (path) =>
-  NAV.find((n) => n.path === path)?.path ||
-  NAV.find((n) => path.startsWith(`${n.path}/`))?.path ||
+  ALL_NAV.find((n) => n.path === path)?.path ||
+  ALL_NAV.find((n) => path.startsWith(`${n.path}/`))?.path ||
   path;
 
 function markActive(path) {
   const active = navPathFor(path);
-  for (const link of qsa('.nav a, .bottomnav a')) {
+  for (const link of qsa('.nav a, .bottomnav a, .navlink')) {
     link.classList.toggle('active', link.dataset.path === active);
   }
-  const item = NAV.find((n) => n.path === active);
+  const item = ALL_NAV.find((n) => n.path === active);
   const title = item?.full || item?.label || 'Video Post';
   document.getElementById('pageTitle').textContent = title;
   document.title = `${title} — Arachynana`;

@@ -7,6 +7,7 @@
 const express = require('express');
 const store = require('../lib/store');
 const buffer = require('../lib/buffer');
+const appSettings = require('../lib/settings');
 const { QUEUE_LIMIT } = require('../lib/rotation');
 const { asyncHandler, HttpError } = require('../lib/http');
 
@@ -77,17 +78,15 @@ router.get('/api/channels/:id/boards', asyncHandler(async (req, res) => {
   }
 }));
 
+// Sekarang menerima semua setelan per channel (board, jam tayang, tipe post,
+// kategori & privasi YouTube), bukan cuma boardId. Validasinya di lib/settings.
 router.patch('/api/channels/:id/settings', asyncHandler(async (req, res) => {
-  const settings = readSettings();
-  const current = settings[req.params.id] || {};
-  if (req.body?.boardId !== undefined) current.boardId = String(req.body.boardId || '');
-  settings[req.params.id] = current;
-  store.write('channel-settings', settings);
-  res.json({ settings: current });
+  const efektif = appSettings.saveChannel(req.params.id, req.body || {});
+  res.json({ settings: appSettings.readChannelsRaw()[req.params.id] || {}, efektif });
 }));
 
 /** Board yang dipilih untuk sebuah channel; dipakai saat menyusun post. */
-const boardFor = (channelId) => readSettings()[channelId]?.boardId || '';
+const boardFor = (channelId) => appSettings.forChannel(channelId).boardId || '';
 
 module.exports = router;
 module.exports.boardFor = boardFor;

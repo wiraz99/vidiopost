@@ -13,6 +13,7 @@ const buffer = require('../lib/buffer');
 const ai = require('../lib/ai');
 const { buildRotation, zonedToUtc, addDays, QUEUE_LIMIT } = require('../lib/rotation');
 const { buildPost } = require('../lib/compose');
+const appSettings = require('../lib/settings');
 const { tagsFor } = require('./hashtags');
 const { resolveLink } = require('./links');
 const { boardFor } = require('./channels');
@@ -54,7 +55,8 @@ function decorateItem(item, plan, videos, now = Date.now()) {
     caption: video?.captions?.[item.platform] || '',
     hashtags: tagsFor(plan.hashtagSetIds, item.platform),
     link: resolveLink(video, item.platform),
-    boardId: item.boardId || boardFor(item.channelId)
+    boardId: item.boardId || boardFor(item.channelId),
+    settings: appSettings.forChannel(item.channelId)
   });
 
   const kurang = [];
@@ -141,10 +143,12 @@ async function gather(body) {
     queueError,
     options: {
       startDate: startDate || new Date().toISOString().slice(0, 10),
-      timezone: timezone || process.env.TIMEZONE || 'Asia/Jakarta',
+      timezone: timezone || appSettings.globalSettings().timezone,
       daysBetween: Number(daysBetween) || 1,
       offsetStep: Number(offsetStep) || 1,
-      channelHours: channelHours || {},
+      // Jam tayang bawaan tiap channel diambil dari Pengaturan; yang dikirim
+      // dari form menimpanya hanya untuk jadwal yang sedang disusun.
+      channelHours: { ...appSettings.channelHours(), ...(channelHours || {}) },
       days: days ? Number(days) : null,
       existingScheduled
     }
@@ -172,7 +176,8 @@ router.post('/api/plan/preview', asyncHandler(async (req, res) => {
         caption: video?.captions?.[row.platform] || '',
         hashtags: tagsFor(hashtagSetIds, row.platform),
         link: resolveLink(video, row.platform),
-        boardId: boardFor(row.channelId)
+        boardId: boardFor(row.channelId),
+        settings: appSettings.forChannel(row.channelId)
       });
       const kurang = text.trim() ? [...missing] : [`caption ${row.platform} belum diisi`, ...missing];
       cell.missing = kurang;
@@ -395,7 +400,8 @@ router.post('/api/plan/:id/send/:index', asyncHandler(async (req, res) => {
     caption: video.captions?.[item.platform] || '',
     hashtags,
     link: resolveLink(video, item.platform),
-    boardId: item.boardId || boardFor(item.channelId)
+    boardId: item.boardId || boardFor(item.channelId),
+    settings: appSettings.forChannel(item.channelId)
   });
 
   // Field wajib yang belum terisi dicegat di sini, sebelum request dikirim —
@@ -419,20 +425,25 @@ router.post('/api/plan/:id/send/:index', asyncHandler(async (req, res) => {
     return res.json({ item: decorateItem(item, plan, videoMap()), mediaCheck, usage: buffer.usageSnapshot() });
   }
 
+  const sekarang = req.body?.sekarang === true;
+  let catatanKirim = null;
+
   try {
-    const post = await buffer.createPost({
+    const { post, mode, mundur } = await kirimKeBuffer({
       account: item.account,
       channelId: item.channelId,
       text,
       metadata,
       videoUrl: media.publicUrl(video.filename),
       dueAt: item.dueAt,
-      mode: 'customScheduled'
+      sekarang
     });
     item.status = 'sent';
     item.bufferPostId = post.id;
     item.error = null;
     item.sentAt = new Date().toISOString();
+    item.sentMode = mode;
+    catatanKirim = mundur;
   } catch (err) {
     item.status = 'error';
     item.error = err.message;
@@ -442,8 +453,44 @@ router.post('/api/plan/:id/send/:index', asyncHandler(async (req, res) => {
   item.lengthWarning = warning;
   writePlans(plans);
 
-  res.json({ item: decorateItem(item, plan, videoMap()), usage: buffer.usageSnapshot() });
+  res.json({
+    item: decorateItem(item, plan, videoMap()),
+    catatan: catatanKirim,
+    usage: buffer.usageSnapshot()
+  });
 }));
+
+/**
+ * Kirim ke Buffer, terjadwal atau langsung.
+ *
+ * `shareNow` ada di enum ShareMode milik Buffer, tapi belum pernah kita
+ * buktikan dengan token asli. Karena itu kalau Buffer menolak modenya, post-nya
+ * TIDAK dibiarkan gagal — dijadwalkan pada waktu paling awal yang diterima
+ * Buffer, lalu kemundurannya dilaporkan apa adanya ke user. Lebih baik tayang
+ * beberapa menit lagi daripada tidak tayang sama sekali.
+ */
+async function kirimKeBuffer({ account, channelId, text, metadata, videoUrl, dueAt, sekarang }) {
+  const dasar = { account, channelId, text, metadata, videoUrl };
+
+  if (!sekarang) {
+    return { post: await buffer.createPost({ ...dasar, dueAt, mode: 'customScheduled' }), mode: 'customScheduled' };
+  }
+
+  try {
+    return { post: await buffer.createPost({ ...dasar, mode: 'shareNow' }), mode: 'shareNow' };
+  } catch (err) {
+    // Hanya mundur kalau memang modenya yang ditolak, bukan isi post-nya.
+    if (!/sharemode|share mode|sharenow|mode|enum|not supported|invalid value/i.test(err.message)) throw err;
+
+    const post = await buffer.createPost({ ...dasar, dueAt: new Date().toISOString(), mode: 'customScheduled' });
+    return {
+      post,
+      mode: 'customScheduled',
+      mundur: 'Buffer menolak mode "kirim sekarang", jadi post dijadwalkan pada waktu paling awal ' +
+        `yang diterima (sekitar 5 menit lagi). Pesan dari Buffer: ${err.message}`
+    };
+  }
+}
 
 /** Teks final yang AKAN dikirim, untuk pratinjau sebelum benar-benar dikirim. */
 router.get('/api/plan/:id/text/:index', asyncHandler(async (req, res) => {
@@ -459,7 +506,8 @@ router.get('/api/plan/:id/text/:index', asyncHandler(async (req, res) => {
     caption: video?.captions?.[item.platform] || '',
     hashtags,
     link: resolveLink(video, item.platform),
-    boardId: item.boardId || boardFor(item.channelId)
+    boardId: item.boardId || boardFor(item.channelId),
+    settings: appSettings.forChannel(item.channelId)
   });
   res.json({ text, length: text.length, warning, metadata, missing });
 }));
