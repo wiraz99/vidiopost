@@ -3,6 +3,7 @@ const express = require('express');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const fetch = require('node-fetch');
 const store = require('../lib/store');
 const ai = require('../lib/ai');
 const media = require('../lib/media');
@@ -119,6 +120,54 @@ router.post('/api/videos/:id/suggest-title', asyncHandler(async (req, res) => {
   writeVideos(videos);
 
   res.json({ titles });
+}));
+
+/**
+ * Cek apakah video benar-benar bisa diunduh dari PUBLIC_BASE_URL.
+ *
+ * Buffer mengunduh videonya sendiri dari URL itu; kalau gagal, errornya
+ * "Invalid post: Video could not be read from its URL." dan baru ketahuan
+ * setelah kuota terpakai. Lebih baik dicek lebih dulu.
+ */
+router.get('/api/media/check', asyncHandler(async (req, res) => {
+  const videos = readVideos();
+  const video = req.query.id ? videos.find((v) => v.id === req.query.id) : videos[0];
+
+  if (!video) return res.json({ ok: false, reason: 'Belum ada video di stok untuk diuji.' });
+
+  const url = media.publicUrl(video.filename);
+  const result = {
+    url,
+    filename: video.filename,
+    adaDiDisk: media.fileExists(video.filename),
+    baseUrlTerlihatLokal: media.baseUrlLooksLocal()
+  };
+
+  if (!result.adaDiDisk) {
+    return res.json({ ...result, ok: false, reason: 'File tidak ada di disk server. Volume penyimpanan kemungkinan tidak ter-mount.' });
+  }
+  if (result.baseUrlTerlihatLokal) {
+    return res.json({ ...result, ok: false, reason: `PUBLIC_BASE_URL berisi alamat lokal (${media.PUBLIC_BASE_URL}) — mustahil dijangkau Buffer dari luar.` });
+  }
+
+  try {
+    // Minta 1KB pertama saja: cukup untuk membuktikan URL-nya bisa diakses
+    // publik tanpa mengunduh seluruh video.
+    const probe = await fetch(url, { headers: { Range: 'bytes=0-1023' } });
+    result.status = probe.status;
+    result.contentType = probe.headers.get('content-type');
+    result.acceptRanges = probe.headers.get('accept-ranges');
+
+    if (probe.status !== 200 && probe.status !== 206) {
+      return res.json({ ...result, ok: false, reason: `URL membalas HTTP ${probe.status}. Buffer tidak akan bisa mengunduhnya.` });
+    }
+    if (!/^video\//i.test(result.contentType || '')) {
+      return res.json({ ...result, ok: false, reason: `Content-Type "${result.contentType}" bukan video. Kemungkinan yang terbuka halaman login atau halaman error, bukan filenya.` });
+    }
+    return res.json({ ...result, ok: true, reason: 'Video bisa diunduh dari luar.' });
+  } catch (err) {
+    return res.json({ ...result, ok: false, reason: `Tidak bisa menghubungi ${url} — ${err.message}` });
+  }
 }));
 
 /** Uji koneksi ke Hermes. Dipakai tombol diagnosa di halaman Stok. */

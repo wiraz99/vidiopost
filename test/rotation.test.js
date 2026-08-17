@@ -155,3 +155,27 @@ test('jam khusus per channel mengalahkan jam bawaan', () => {
   });
   assert.strictEqual(items.find((i) => i.channelId === 'c2').time, '06:30');
 });
+
+// ---------- jadwal yang sudah lewat ----------
+
+test('jadwal di waktu yang sudah lewat diperingatkan dan ditandai', () => {
+  // Anggap "sekarang" jauh setelah tanggal jadwalnya.
+  const { items, warnings } = buildRotation({
+    videos: videos(2), channels: channels(1), startDate: '2026-08-17',
+    timezone: 'Asia/Jakarta', channelHours: { c1: '09:00' },
+    now: new Date('2026-08-17T12:00:00+07:00').getTime()
+  });
+
+  assert.ok(warnings.some((w) => w.includes('SUDAH LEWAT')), warnings.join('\n'));
+  assert.strictEqual(items[0].isPast, true, 'item 09:00 hari ini seharusnya ditandai lewat');
+  assert.ok(!items[1].isPast, 'item besok seharusnya tidak ditandai lewat');
+});
+
+test('jadwal yang seluruhnya di masa depan tidak diperingatkan', () => {
+  const { warnings, items } = buildRotation({
+    videos: videos(3), channels: channels(2), startDate: '2026-08-20',
+    now: new Date('2026-08-17T12:00:00+07:00').getTime()
+  });
+  assert.ok(!warnings.some((w) => w.includes('SUDAH LEWAT')), warnings.join('\n'));
+  assert.ok(items.every((i) => !i.isPast));
+});

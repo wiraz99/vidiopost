@@ -12,7 +12,7 @@ const store = require('../lib/store');
 const buffer = require('../lib/buffer');
 const ai = require('../lib/ai');
 const { buildRotation, QUEUE_LIMIT } = require('../lib/rotation');
-const { composePostText, lengthWarning } = require('../lib/compose');
+const { buildPost } = require('../lib/compose');
 const { tagsFor } = require('./hashtags');
 const { resolveLink } = require('./links');
 const media = require('../lib/media');
@@ -186,21 +186,32 @@ router.post('/api/plan/:id/send/:index', asyncHandler(async (req, res) => {
   if (!video) throw new HttpError('Video untuk item ini sudah dihapus', 400);
 
   const hashtags = tagsFor(plan.hashtagSetIds, item.platform);
-  const text = composePostText({
+  const { text, metadata, missing, warning } = buildPost({
     platform: item.platform,
     title: video.title,
     caption: video.captions?.[item.platform] || '',
     hashtags,
-    link: resolveLink(video, item.platform)
+    link: resolveLink(video, item.platform),
+    boardId: item.boardId || ''
   });
 
-  if (!text.trim()) throw new HttpError(`Belum ada teks untuk ${item.channelLabel}. Generate caption dulu.`, 400);
+  // Field wajib yang belum terisi dicegat di sini, sebelum request dikirim —
+  // percuma membakar kuota untuk post yang pasti ditolak Buffer.
+  if (missing.length || !text.trim()) {
+    item.status = 'error';
+    item.error = missing.length
+      ? `Belum lengkap: ${missing.join(', ')}`
+      : `Belum ada teks untuk ${item.channelLabel}. Generate caption dulu.`;
+    writePlans(plans);
+    return res.json({ item, usage: buffer.usageSnapshot() });
+  }
 
   try {
     const post = await buffer.createPost({
       account: item.account,
       channelId: item.channelId,
       text,
+      metadata,
       videoUrl: media.publicUrl(video.filename),
       dueAt: item.dueAt,
       mode: 'customScheduled'
@@ -215,7 +226,7 @@ router.post('/api/plan/:id/send/:index', asyncHandler(async (req, res) => {
   }
 
   item.textLength = text.length;
-  item.lengthWarning = lengthWarning(item.platform, text);
+  item.lengthWarning = warning;
   writePlans(plans);
 
   res.json({ item, usage: buffer.usageSnapshot() });
@@ -229,14 +240,15 @@ router.get('/api/plan/:id/text/:index', asyncHandler(async (req, res) => {
 
   const video = readVideos().find((v) => v.id === item.videoId);
   const hashtags = tagsFor(plan.hashtagSetIds, item.platform);
-  const text = composePostText({
+  const { text, metadata, missing, warning } = buildPost({
     platform: item.platform,
-    title: video?.title,
+    title: video?.title || '',
     caption: video?.captions?.[item.platform] || '',
     hashtags,
-    link: resolveLink(video, item.platform)
+    link: resolveLink(video, item.platform),
+    boardId: item.boardId || ''
   });
-  res.json({ text, length: text.length, warning: lengthWarning(item.platform, text) });
+  res.json({ text, length: text.length, warning, metadata, missing });
 }));
 
 module.exports = router;

@@ -48,6 +48,7 @@ query Introspect {
   schedulingType: __type(name: "SchedulingType")  { enumValues { name } }
   postStatus:     __type(name: "PostStatus")      { enumValues { name } }
   postMetricType: __type(name: "PostMetricType")  { enumValues { name } }
+  postType:       __type(name: "PostType")        { enumValues { name } }
   createPostInput: __type(name: "CreatePostInput") {
     inputFields { name type { name kind ofType { name kind } } }
   }
@@ -106,6 +107,16 @@ query SentWithMetrics($organizationId: OrganizationId!) {
   }
 }`;
 
+const PINTEREST_BOARDS = `
+query PinterestBoards($id: ChannelId!) {
+  channel(input: { id: $id }) {
+    id
+    service
+    name
+    ... on PinterestChannel { boards { id name } }
+  }
+}`;
+
 const DAILY_LIMITS = `
 query DailyLimits($organizationId: OrganizationId!) {
   dailyPostingLimits(input: { organizationId: $organizationId }) {
@@ -147,11 +158,13 @@ async function probeToken(label, token) {
   report.schedulingType = enumNames('schedulingType');
   report.postStatus = enumNames('postStatus');
   report.postMetricType = enumNames('postMetricType');
+  report.postType = enumNames('postType');
 
   console.log(`ShareMode      : ${report.shareMode.join(', ') || '(kosong)'}`);
   console.log(`SchedulingType : ${report.schedulingType.join(', ') || '(kosong)'}`);
   console.log(`PostStatus     : ${report.postStatus.join(', ') || '(kosong)'}`);
   console.log(`PostMetricType : ${report.postMetricType.join(', ') || '(kosong)'}`);
+  console.log(`PostType       : ${report.postType.join(', ') || '(kosong)'}  <- nilai untuk metadata.instagram.type`);
 
   const shareNow = report.shareMode.find(v => /now|immediate|direct/i.test(v));
   console.log(shareNow
@@ -206,6 +219,25 @@ async function probeToken(label, token) {
     console.log(`\n✅ CHANNEL (${report.channels.length}) — salin id ini kalau mau isi channels.json manual:`);
     for (const c of report.channels) {
       console.log(`   ${(c.service || '?').padEnd(11)} ${(c.name || '').padEnd(24)} ${c.id}`);
+    }
+  }
+
+  // --- board Pinterest (dibutuhkan metadata.pinterest.boardServiceId) ---
+  const pin = (report.channels || []).find((c) => /pinterest/i.test(c.service || ''));
+  if (pin) {
+    const boardRes = await gql(token, PINTEREST_BOARDS, { id: pin.id });
+    const boardErr = fail(boardRes);
+    if (boardErr) {
+      console.log(`\n(board Pinterest belum bisa dibaca: ${boardErr})`);
+      console.log('   -> kirim pesan ini ke Claude, nama field-nya perlu disesuaikan');
+      report.pinterestBoardsError = boardErr;
+    } else {
+      report.pinterestBoards = boardRes.data?.channel?.boards || [];
+      console.log('\n✅ BOARD PINTEREST — salin salah satu id ke PINTEREST_BOARD_ID:');
+      for (const b of report.pinterestBoards) {
+        console.log(`   ${String(b.name || '').padEnd(28)} ${b.id}`);
+      }
+      if (!report.pinterestBoards.length) console.log('   (belum ada board di akun ini)');
     }
   }
 

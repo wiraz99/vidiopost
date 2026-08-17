@@ -138,8 +138,14 @@ Penyebab paling sering:
 - **Antrian maksimal 10 post per channel.** Dicek dari antrian asli sebelum kirim.
 - **Tidak ada mode "publish sekarang"** yang terdokumentasi. Yang dipakai
   `customScheduled` + `dueAt`. Kalau probe menemukan `shareNow`, ganti di `lib/buffer.js`.
-- **Judul YouTube & judul/link Pinterest digabung ke teks caption**, karena
-  `createPost` menerima satu string. Lihat `lib/compose.js`.
+- **Tiap platform punya field wajib sendiri** lewat `metadata` (PostInputMetaData).
+  Tanpa itu post ditolak: Instagram butuh `type`, YouTube butuh `title` + `categoryId`,
+  Pinterest butuh `boardServiceId`. Diatur di `lib/compose.js`; yang belum
+  terisi dicegat sebelum request dikirim supaya tidak membakar kuota.
+- **Token wajib punya scope `posts:write`.** Tanpa itu semua pengiriman ditolak
+  dengan "Insufficient scope", dan itu hanya bisa diperbaiki dari dashboard Buffer.
+- **Jadwal tidak boleh di masa lalu.** Jam tayang bawaan (09:00, 12:00, …) mudah
+  terlewat kalau jadwal dibuat sore hari — pratinjau memperingatkannya.
 
 ## Setelan
 
