@@ -526,6 +526,11 @@ async function renderPlan(planId) {
       <button class="btn btn-ghost" id="retryFailed">${iconSvg('refresh', 16)} Ulangi yang gagal</button>
       <span class="muted" id="sendStatus"></span>
     </div>
+    <div class="row" style="margin-bottom:12px;padding:10px;background:var(--surface-2);border-radius:var(--r-sm)">
+      <span class="muted">Geser semua yang belum terkirim ke tanggal mulai baru:</span>
+      <input type="date" id="reStart" style="width:150px" />
+      <button class="btn btn-ghost btn-sm" id="reBtn">Jadwalkan ulang</button>
+    </div>
     <div class="sendlist" id="sendList"></div>
   `);
   page.append(sendPanel);
@@ -540,6 +545,31 @@ async function renderPlan(planId) {
     sendItems(e.target, plan, sendList, plan.items.filter((i) => i.status !== 'sent'));
   sendPanel.querySelector('#retryFailed').onclick = (e) =>
     sendItems(e.target, plan, sendList, plan.items.filter((i) => i.status === 'error'));
+
+  // Geser semua yang belum terkirim — jalan cepat kalau banyak item kedaluwarsa.
+  const reStart = sendPanel.querySelector('#reStart');
+  const besok = new Date(Date.now() + 86400000);
+  reStart.value = `${besok.getFullYear()}-${String(besok.getMonth() + 1).padStart(2, '0')}-${String(besok.getDate()).padStart(2, '0')}`;
+
+  sendPanel.querySelector('#reBtn').onclick = async (e) => {
+    if (!reStart.value) return toast('Pilih tanggal mulai baru dulu.', 'bad');
+    const done = busy(e.currentTarget, 'Menggeser…');
+    try {
+      const { plan: updated, diubah, dilewati, warning } = await api.reschedulePlan(plan.id, reStart.value);
+      Object.assign(plan, updated);
+      paintItems(sendList, plan);
+      updateSendStatus(plan);
+      toast(
+        `${diubah} item digeser${dilewati ? `, ${dilewati} dilewati karena sudah terkirim` : ''}.`,
+        warning ? 'bad' : 'ok'
+      );
+      if (warning) toast(warning, 'bad');
+    } catch (err) {
+      toast(`Gagal menggeser: ${err.message}`, 'bad');
+    } finally {
+      done();
+    }
+  };
 }
 
 async function generateCaptions(trigger, plan, planVideos, progressBox) {
@@ -662,8 +692,55 @@ function buildItemRow(item, plan, container) {
 
   const body = el('div', 'grow');
   body.append(el('div', 'truncate', `${item.channelLabel} — ${item.videoTitle}`));
-  const meta = el('div', 'muted', `${formatDayLabel(item.date)} ${item.time}`);
+
+  const meta = el('div', 'row');
+  meta.style.gap = '6px';
+
+  if (item.status === 'sent') {
+    // Sudah terkirim — waktunya tidak bisa diubah lagi dari sini.
+    meta.append(el('span', 'sub', `${formatDayLabel(item.date)} ${item.time}`));
+  } else {
+    // Bisa diubah langsung di tempat: inilah jalan keluar untuk item
+    // yang gagal karena waktunya sudah lewat.
+    const dateInput = el('input');
+    dateInput.type = 'date';
+    dateInput.value = item.date;
+    dateInput.style.width = '148px';
+
+    const timeInput = el('input');
+    timeInput.type = 'time';
+    timeInput.value = item.time;
+    timeInput.style.width = '104px';
+
+    const simpanWaktu = async () => {
+      try {
+        const { item: updated } = await api.updatePlanItem(plan.id, item.index, {
+          date: dateInput.value,
+          time: timeInput.value
+        });
+        Object.assign(plan.items[item.index], updated);
+        toast('Waktu diperbarui.', 'ok');
+        const baris = container.querySelector(`[data-index="${item.index}"]`);
+        if (baris) baris.replaceWith(buildItemRow(plan.items[item.index], plan, container));
+        updateSendStatus(plan);
+      } catch (err) {
+        toast(err.message, 'bad');
+        dateInput.value = item.date;
+        timeInput.value = item.time;
+      }
+    };
+    dateInput.onchange = simpanWaktu;
+    timeInput.onchange = simpanWaktu;
+
+    meta.append(dateInput, timeInput);
+    if (item.isPast) {
+      const lewat = el('span', 'badge badge-error', 'sudah lewat');
+      lewat.title = 'Buffer menolak jadwal di masa lalu — ubah tanggal atau jamnya';
+      meta.append(lewat);
+    }
+  }
   body.append(meta);
+
   if (item.error) body.append(el('div', 'err-msg', item.error));
   row.append(body);
 
@@ -672,7 +749,6 @@ function buildItemRow(item, plan, container) {
   }[item.status] || item.status));
 
   const retry = iconButton('refresh', 'Kirim ulang item ini');
-  retry.title = 'Kirim ulang item ini';
   retry.hidden = item.status === 'sent';
   retry.onclick = (e) => sendItems(e.target, plan, container, [item]);
   row.append(retry);

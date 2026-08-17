@@ -82,6 +82,8 @@ export const deletePlan = (id) => del(`/api/plan/${id}`);
 export const planCaption = (planId, videoId, brief) => post(`/api/plan/${planId}/caption/${videoId}`, { brief });
 export const sendPlanItem = (planId, index) => post(`/api/plan/${planId}/send/${index}`);
 export const planItemText = (planId, index) => get(`/api/plan/${planId}/text/${index}`);
+export const updatePlanItem = (planId, index, body) => patch(`/api/plan/${planId}/item/${index}`, body);
+export const reschedulePlan = (planId, startDate) => post(`/api/plan/${planId}/reschedule`, { startDate });
 
 // ---------- tautan ----------
 export const listLinks = () => get('/api/links');

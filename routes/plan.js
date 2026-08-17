@@ -11,7 +11,7 @@ const express = require('express');
 const store = require('../lib/store');
 const buffer = require('../lib/buffer');
 const ai = require('../lib/ai');
-const { buildRotation, QUEUE_LIMIT } = require('../lib/rotation');
+const { buildRotation, zonedToUtc, addDays, QUEUE_LIMIT } = require('../lib/rotation');
 const { buildPost } = require('../lib/compose');
 const { tagsFor } = require('./hashtags');
 const { resolveLink } = require('./links');
@@ -145,6 +145,85 @@ router.delete('/api/plan/:id', asyncHandler(async (req, res) => {
     store.write('videos', videos);
   }
   res.json({ ok: true });
+}));
+
+// ---------- ubah waktu ----------
+
+/** Ubah tanggal/jam satu item. Item yang sudah terkirim tidak bisa diubah. */
+router.patch('/api/plan/:id/item/:index', asyncHandler(async (req, res) => {
+  const { plans, plan } = findPlan(req.params.id);
+  const item = plan.items[Number(req.params.index)];
+  if (!item) throw new HttpError('Item jadwal tidak ditemukan', 404);
+  if (item.status === 'sent') throw new HttpError('Item ini sudah terkirim ke Buffer, waktunya tidak bisa diubah dari sini.', 400);
+
+  const date = req.body?.date || item.date;
+  const time = req.body?.time || item.time;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new HttpError('Tanggal tidak valid', 400);
+  if (!/^\d{2}:\d{2}$/.test(time)) throw new HttpError('Jam tidak valid', 400);
+
+  const dueAt = zonedToUtc(date, time, plan.timezone);
+  if (dueAt.getTime() <= Date.now()) {
+    throw new HttpError('Waktu itu sudah lewat. Buffer hanya menerima jadwal di masa depan.', 400);
+  }
+
+  Object.assign(item, {
+    date,
+    time,
+    dueAtLocal: `${date}T${time}`,
+    dueAt: dueAt.toISOString(),
+    isPast: false,
+    // Item yang tadinya gagal karena kedaluwarsa jadi siap dicoba lagi.
+    status: item.status === 'error' ? 'draft' : item.status,
+    error: null
+  });
+  writePlans(plans);
+
+  res.json({ item });
+}));
+
+/**
+ * Geser SELURUH item yang belum terkirim ke tanggal mulai baru.
+ * Pola rotasinya dipertahankan: tiap item tetap di hari ke-berapa dan
+ * jam yang sama, cuma titik awalnya yang berpindah.
+ */
+router.post('/api/plan/:id/reschedule', asyncHandler(async (req, res) => {
+  const { plans, plan } = findPlan(req.params.id);
+  const startDate = req.body?.startDate;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate || '')) throw new HttpError('Tanggal mulai tidak valid', 400);
+
+  const daysBetween = plan.daysBetween || 1;
+  let diubah = 0;
+  let dilewati = 0;
+
+  for (const item of plan.items) {
+    if (item.status === 'sent') { dilewati++; continue; }
+
+    const date = addDays(startDate, (item.dayIndex || 0) * daysBetween);
+    const dueAt = zonedToUtc(date, item.time, plan.timezone);
+
+    Object.assign(item, {
+      date,
+      dueAtLocal: `${date}T${item.time}`,
+      dueAt: dueAt.toISOString(),
+      isPast: dueAt.getTime() <= Date.now(),
+      status: item.status === 'error' ? 'draft' : item.status,
+      error: null
+    });
+    diubah++;
+  }
+
+  plan.startDate = startDate;
+  writePlans(plans);
+
+  const masihLewat = plan.items.filter((i) => i.isPast).length;
+  res.json({
+    plan,
+    diubah,
+    dilewati,
+    warning: masihLewat
+      ? `${masihLewat} item masih jatuh di waktu yang sudah lewat. Pilih tanggal mulai yang lebih jauh.`
+      : null
+  });
 }));
 
 // ---------- siapkan caption ----------

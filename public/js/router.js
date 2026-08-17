@@ -47,7 +47,10 @@ function markActive(path) {
   document.title = `${title} — Arachynana`;
 }
 
-let lastPath = null;
+// Yang dibandingkan adalah SELURUH hash, bukan path saja.
+// Dulu path saja, dan akibatnya #/jadwal -> #/jadwal?id=xxx dianggap tidak
+// berubah: membuka jadwal tersimpan dan kembali ke "buat baru" sama-sama diam.
+let lastRoute = null;
 
 export function startRouter() {
   buildNav(document.getElementById('sideNav'), true);
@@ -59,10 +62,9 @@ export function startRouter() {
     const { path, params } = currentRoute();
     markActive(path);
 
-    // Ganti halaman hanya kalau path-nya memang berubah, supaya perubahan
-    // query string tidak memaksa render ulang dari nol.
-    if (path === lastPath && !force) return;
-    lastPath = path;
+    const route = location.hash.replace(/^#/, '') || path;
+    if (route === lastRoute && !force) return;
+    lastRoute = route;
 
     view.innerHTML = '<p class="empty">Memuat…</p>';
     try {
