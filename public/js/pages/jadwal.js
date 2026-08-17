@@ -231,7 +231,11 @@ function buildBoardPicker(channel) {
   const box = el('div', 'subcard');
   box.style.marginLeft = '34px';
 
-  const label = el('label', 'lbl', `Board tujuan untuk ${channel.label}`);
+  const head = el('div', 'row-between');
+  head.append(el('label', 'lbl', `Board tujuan untuk ${channel.label}`));
+  const reload = button('btn btn-ghost btn-sm', 'refresh', 'Muat ulang');
+  head.append(reload);
+
   const select = el('select');
   select.disabled = true;
   select.append(el('option', null, 'Memuat board…'));
@@ -239,19 +243,25 @@ function buildBoardPicker(channel) {
   const note = el('p', 'muted');
   note.style.marginTop = '6px';
 
-  box.append(label, select, note);
+  box.append(head, select, note);
 
-  (async () => {
+  const load = async (force) => {
+    const done = force ? busy(reload, 'Memuat…') : null;
+    select.disabled = true;
+    select.innerHTML = '';
+    select.append(el('option', null, 'Memuat board…'));
+
     try {
-      const { boards, selected, problem } = await api.getChannelBoards(channel.id);
+      const { boards, selected, problem } = await api.getChannelBoards(channel.id, force);
 
       select.innerHTML = '';
       if (problem || !boards.length) {
         select.append(el('option', null, 'Board tidak bisa dibaca'));
-        note.textContent = problem
-          ? `Gagal membaca board: ${problem}`
-          : 'Akun Pinterest ini belum punya board. Buat dulu satu board di Pinterest.';
         note.style.color = 'var(--bad)';
+        note.innerHTML = problem
+          ? `Gagal membaca board: ${escapeHtml(problem)}`
+          : 'Belum ada board terbaca. Kalau board-nya baru saja dibuat, tekan <b>Muat ulang</b>. ' +
+            'Kalau tetap kosong, Buffer belum menyegarkan datanya — buka Buffer, putuskan lalu sambungkan ulang channel Pinterest-nya.';
         return;
       }
 
@@ -286,8 +296,13 @@ function buildBoardPicker(channel) {
       select.append(el('option', null, 'Gagal memuat'));
       note.textContent = err.message;
       note.style.color = 'var(--bad)';
+    } finally {
+      if (done) done();
     }
-  })();
+  };
+
+  reload.onclick = () => load(true);
+  load(false);
 
   return box;
 }
