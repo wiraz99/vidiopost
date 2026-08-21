@@ -131,6 +131,18 @@ function buildCard(link) {
   open.rel = 'noopener';
   openRow.append(open);
   urlField.append(openRow);
+
+  // Pinterest satu-satunya platform yang memakai link sebagai TUJUAN pin, dan
+  // menolak link pendek dengan pesan "Unknown error" yang tidak menjelaskan
+  // apa pun. Ditandai di sini supaya ketahuan sebelum jadwal dibuat.
+  if (link.pinterest?.blokir) {
+    urlField.append(html('div', 'alert alert-bad',
+      `<div><b>Ditolak Pinterest.</b><div style="margin-top:4px">${escapeHtml(link.pinterest.blokir)}</div></div>`));
+  } else if (link.pinterest?.peringatan) {
+    urlField.append(html('div', 'alert alert-warn',
+      `<div>${escapeHtml(link.pinterest.peringatan)}</div>`));
+  }
+
   card.append(urlField);
 
   // --- catatan ---

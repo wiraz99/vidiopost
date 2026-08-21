@@ -12,6 +12,8 @@ const store = require('../lib/store');
 const media = require('../lib/media');
 const buffer = require('../lib/buffer');
 const ai = require('../lib/ai');
+const { periksaUntukPinterest } = require('../lib/linkcheck');
+const { resolveLink } = require('./links');
 const { asyncHandler } = require('../lib/http');
 
 const router = express.Router();
@@ -103,6 +105,26 @@ router.get('/api/diagnostics', asyncHandler(async (req, res) => {
             'Pilih board di halaman Jadwal, bagian "2 · Channel tujuan".'));
         } else {
           checks.push(ok('Board Pinterest', 'Sudah dipilih.'));
+        }
+
+        // Link tujuan pin. Pinterest satu-satunya platform yang memakai link
+        // sebagai TUJUAN, dan menolak link pendek dengan pesan "Unknown error"
+        // yang tidak menjelaskan apa pun — gejalanya terlihat di dashboard
+        // Buffer sebagai gagal tayang, bukan sebagai penolakan saat dikirim.
+        const contoh = videos.find((v) => v.status !== 'done') || videos[0];
+        const tujuan = resolveLink(contoh, 'pinterest');
+        const { blokir, peringatan } = periksaUntukPinterest(tujuan);
+
+        if (blokir) {
+          checks.push(bad('Link tujuan Pinterest', blokir,
+            'Buka halaman Tautan, ganti link itu dengan URL lengkap (bukan pemendek), ' +
+            'atau batasi tautan tersebut ke platform selain Pinterest.'));
+        } else if (peringatan) {
+          checks.push(warn('Link tujuan Pinterest', peringatan, null));
+        } else if (tujuan) {
+          checks.push(ok('Link tujuan Pinterest', tujuan));
+        } else {
+          checks.push(ok('Link tujuan Pinterest', 'Tidak ada link — pin dikirim tanpa tujuan, itu boleh.'));
         }
       }
     } catch (err) {

@@ -5,6 +5,7 @@
  */
 const express = require('express');
 const store = require('../lib/store');
+const { periksaUntukPinterest } = require('../lib/linkcheck');
 const { asyncHandler, HttpError } = require('../lib/http');
 
 const router = express.Router();
@@ -32,7 +33,16 @@ function validate(url) {
   }
 }
 
-router.get('/api/links', (req, res) => res.json({ links: readLinks() }));
+// Tiap tautan dilengkapi vonis kelayakannya sebagai tujuan pin Pinterest.
+// Pinterest satu-satunya platform yang memakai link sebagai TUJUAN, dan
+// menolak link pendek dengan pesan "Unknown error" yang menyesatkan.
+router.get('/api/links', (req, res) => {
+  const links = readLinks().map((l) => {
+    const { blokir, peringatan } = periksaUntukPinterest(l.url);
+    return { ...l, pinterest: blokir ? { blokir } : peringatan ? { peringatan } : null };
+  });
+  res.json({ links });
+});
 
 router.post('/api/links', asyncHandler(async (req, res) => {
   const { name, url, note, platforms, isDefault } = req.body || {};
