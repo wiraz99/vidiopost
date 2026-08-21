@@ -68,11 +68,49 @@ router.post('/api/upload', upload.single('video'), asyncHandler(async (req, res)
 }));
 
 // ---------- daftar & ubah ----------
+/**
+ * Rekam jejak tiap video di seluruh jadwal: sudah benar-benar terkirim ke
+ * platform apa saja, masih mengantre di mana, dan di mana pernah gagal.
+ *
+ * Dihitung dari plans.json, bukan disimpan di videos.json — status item bisa
+ * berubah kapan saja (dikirim ulang, dijadwalkan ulang, jadwalnya dihapus),
+ * jadi salinan yang disimpan akan cepat berbohong.
+ */
+function jejakPerVideo() {
+  const peta = new Map();
+  for (const plan of store.read('plans', [])) {
+    for (const item of plan.items || []) {
+      if (!item.videoId) continue;
+      if (!peta.has(item.videoId)) {
+        peta.set(item.videoId, { terkirim: new Set(), terjadwal: new Set(), gagal: new Set() });
+      }
+      const e = peta.get(item.videoId);
+      if (item.status === 'sent') e.terkirim.add(item.platform);
+      else if (item.status === 'error') e.gagal.add(item.platform);
+      else e.terjadwal.add(item.platform);
+    }
+  }
+  return peta;
+}
+
 router.get('/api/videos', (req, res) => {
   const { status } = req.query;
   const videos = readVideos();
   const list = status ? videos.filter((v) => v.status === status) : videos;
-  res.json({ videos: list.map(media.decorate) });
+  const jejak = jejakPerVideo();
+
+  res.json({
+    videos: list.map((v) => {
+      const e = jejak.get(v.id) || { terkirim: new Set(), terjadwal: new Set(), gagal: new Set() };
+      // Tiap platform hanya boleh muncul sekali, dengan keadaan TERKINI-nya.
+      // Sebuah platform bisa gagal di jadwal lama lalu diulang di jadwal baru;
+      // yang perlu dilihat user adalah posisinya sekarang, bukan riwayatnya.
+      // Urutan menang: sudah terkirim > sedang mengantre > pernah gagal.
+      const terjadwal = [...e.terjadwal].filter((p) => !e.terkirim.has(p));
+      const gagal = [...e.gagal].filter((p) => !e.terkirim.has(p) && !terjadwal.includes(p));
+      return { ...media.decorate(v), terkirim: [...e.terkirim], terjadwal, gagal };
+    })
+  });
 });
 
 // `link` = URL tujuan, dipakai Pinterest (lihat lib/compose.js).

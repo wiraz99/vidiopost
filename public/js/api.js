@@ -107,6 +107,7 @@ export const sendPlanItem = (planId, index, sekarang = false) =>
 export const planItemText = (planId, index) => get(`/api/plan/${planId}/text/${index}`);
 export const updatePlanItem = (planId, index, body) => patch(`/api/plan/${planId}/item/${index}`, body);
 export const reschedulePlan = (planId, startDate) => post(`/api/plan/${planId}/reschedule`, { startDate });
+export const syncPlan = (planId) => post(`/api/plan/${planId}/sync`);
 
 // ---------- tautan ----------
 export const listLinks = () => get('/api/links');

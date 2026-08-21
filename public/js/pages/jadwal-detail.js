@@ -197,6 +197,34 @@ function kelolaPanel() {
   geser.append(el('p', 'note', 'Pola rotasinya tetap: tiap item bertahan di hari ke-berapa dan jam yang sama.'));
   box.append(geser);
 
+  // Buffer bisa gagal menayangkan SETELAH menerima post kita. Tanpa ini,
+  // item yang sudah merah di Buffer tetap tertulis "terkirim" di sini.
+  const sinkron = button('btn btn-ghost btn-sm', 'refresh', 'Periksa status di Buffer');
+  sinkron.onclick = async (e) => {
+    const done = busy(e.currentTarget, 'Menanya Buffer…');
+    try {
+      const hasil = await api.syncPlan(plan.id);
+      await refresh();
+      toast(
+        hasil.berubah
+          ? `${hasil.berubah} item ternyata berbeda dengan catatan Buffer.`
+          : `${hasil.diperiksa} item diperiksa, semuanya cocok.`,
+        hasil.berubah ? 'bad' : 'ok'
+      );
+      for (const c of hasil.catatan || []) toast(c, 'bad');
+    } catch (err) {
+      toast(`Gagal memeriksa: ${err.message}`, 'bad');
+      done();
+    }
+  };
+
+  const barisSinkron = el('div', 'field');
+  barisSinkron.append(sinkron);
+  barisSinkron.append(el('p', 'note',
+    'Post yang diterima Buffer belum tentu berhasil tayang. Ini membaca status ' +
+    'sebenarnya dari Buffer dan memperbaiki catatan di sini.'));
+  box.append(barisSinkron);
+
   const hapus = button('btn btn-danger btn-sm', 'trash', 'Hapus jadwal ini');
   hapus.onclick = async () => {
     const pesan = ringkas.sent

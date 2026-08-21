@@ -636,3 +636,26 @@ td.cell-past { color: var(--bad); }
   padding: 6px 9px; border-radius: var(--r-sm); margin-top: 6px;
 }
 .diag-fix .ico { margin-top: 2px; }
+
+/* ========== jejak platform pada video ========== */
+/* Penanda kecil di baris video: sudah sampai ke platform mana saja.
+   Cincin warna dipakai, bukan warna isian, supaya monogram platformnya
+   tetap terbaca dan barisnya tidak jadi ramai. */
+.jejak { display: inline-flex; gap: 3px; align-items: center; flex-wrap: wrap; }
+
+.pdot-xs { width: 18px; height: 18px; font-size: 8px; border-radius: 5px; }
+
+.pdot-terkirim { box-shadow: 0 0 0 1.5px var(--ok); }
+.pdot-gagal    { box-shadow: 0 0 0 1.5px var(--bad); }
+.pdot-antre    { opacity: .45; }
+
+/* nomor rotasi untuk video yang tidak ikut dipilih */
+.vnum-off { color: var(--line-2); font-weight: 400; }
+
+/* keterangan arti penanda */
+.jejak-legend { display: flex; gap: var(--s3); flex-wrap: wrap; align-items: center; font-size: 11.5px; color: var(--muted); }
+.jejak-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.jejak-legend i { width: 12px; height: 12px; border-radius: 4px; background: var(--surface-3); display: inline-block; }
+.jejak-legend i.ok  { box-shadow: 0 0 0 1.5px var(--ok); }
+.jejak-legend i.bad { box-shadow: 0 0 0 1.5px var(--bad); }
+.jejak-legend i.antre { opacity: .45; }

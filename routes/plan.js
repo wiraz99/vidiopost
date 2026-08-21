@@ -492,6 +492,82 @@ async function kirimKeBuffer({ account, channelId, text, metadata, videoUrl, due
   }
 }
 
+/**
+ * Tanya Buffer: post yang kita kirim sebenarnya jadi tayang atau tidak?
+ *
+ * createPost yang berhasil hanya berarti "diterima ke antrian". Buffer baru
+ * mencoba menayangkan saat waktunya tiba, dan kalau jaringan tujuan menolak
+ * (Pinterest paling sering), kegagalan itu tidak pernah sampai ke sini — item
+ * kita tetap tertulis "terkirim" padahal di Buffer sudah merah.
+ *
+ * Nilai statusnya tidak ditebak: daftarnya diambil dari skema Buffer.
+ */
+router.post('/api/plan/:id/sync', asyncHandler(async (req, res) => {
+  const { plans, plan } = findPlan(req.params.id);
+
+  const dikirim = plan.items.filter((i) => i.bufferPostId);
+  if (!dikirim.length) {
+    return res.json({ diperiksa: 0, berubah: 0, catatan: ['Belum ada item yang pernah dikirim ke Buffer.'] });
+  }
+
+  // Daftar status diambil dari skema, bukan dihafal.
+  let skema = store.read('metrics-schema', null);
+  if (!skema?.postStatus?.length) {
+    skema = await buffer.introspectMetrics();
+    store.write('metrics-schema', skema);
+  }
+
+  const { byId, errors } = await buffer.postStatuses({ statuses: skema.postStatus });
+
+  const catatan = [...errors];
+  let berubah = 0;
+  let hilang = 0;
+
+  for (const item of dikirim) {
+    const dariBuffer = byId.get(item.bufferPostId);
+
+    if (!dariBuffer) {
+      hilang++;
+      continue;
+    }
+
+    const status = String(dariBuffer.status || '');
+    item.bufferStatus = status;
+
+    if (/error|fail|reject/i.test(status)) {
+      if (item.status !== 'error') berubah++;
+      item.status = 'error';
+      item.error =
+        `Buffer gagal menayangkannya ke ${item.platform} (status Buffer: "${status}"). ` +
+        'Post-nya sempat masuk antrian, jadi masalahnya di langkah Buffer ke jaringan tujuan — ' +
+        'bukan di data yang dikirim aplikasi ini.';
+    } else if (status === 'sent' && item.status !== 'sent') {
+      item.status = 'sent';
+      item.error = null;
+      berubah++;
+    }
+  }
+
+  writePlans(plans);
+
+  if (hilang) {
+    catatan.push(
+      `${hilang} post tidak ditemukan lagi di Buffer — kemungkinan sudah dihapus di sana, ` +
+      'atau usianya di luar jangkauan pembacaan.'
+    );
+  }
+
+  const items = plan.items.map((item) => decorateItem(item, plan, videoMap()));
+  res.json({
+    plan: { ...plan, items },
+    ringkas: summarize(items, plan),
+    diperiksa: dikirim.length,
+    berubah,
+    catatan,
+    usage: buffer.usageSnapshot()
+  });
+}));
+
 /** Teks final yang AKAN dikirim, untuk pratinjau sebelum benar-benar dikirim. */
 router.get('/api/plan/:id/text/:index', asyncHandler(async (req, res) => {
   const { plan } = findPlan(req.params.id);

@@ -8,8 +8,9 @@
 import * as api from '../api.js';
 import {
   el, html, toast, busy, formatBytes, debounce, escapeHtml,
-  icon, iconSvg, button, iconButton, videoThumb
+  icon, iconSvg, button, iconButton, videoThumb, platformDot
 } from '../utils.js';
+import { metaFor } from '../config.js';
 import { diagnosticsPanel } from '../components/diagnostics.js';
 
 let videos = [];
@@ -150,6 +151,31 @@ function paintList() {
   videos.forEach((video, index) => listEl.append(buildRow(video, index)));
 }
 
+/**
+ * Penanda platform pada sebuah video.
+ * Cincin hijau = sudah terkirim, cincin merah = pernah gagal, pudar = mengantre.
+ */
+function jejakPlatform(video) {
+  const bagian = [
+    ['terkirim', video.terkirim, 'sudah terkirim ke'],
+    ['gagal', video.gagal, 'gagal di'],
+    ['antre', video.terjadwal, 'masih mengantre di']
+  ].filter(([, daftar]) => daftar?.length);
+
+  if (!bagian.length) return null;
+
+  const bungkus = el('span', 'jejak');
+  for (const [jenis, daftar, keterangan] of bagian) {
+    for (const platform of daftar) {
+      const dot = platformDot(platform);
+      dot.classList.add('pdot-xs', `pdot-${jenis}`);
+      dot.title = `${keterangan} ${metaFor(platform).name}`;
+      bungkus.append(dot);
+    }
+  }
+  return bungkus;
+}
+
 function buildRow(video, index) {
   const row = el('div', 'vrow vrow-num');
   row.dataset.id = video.id;
@@ -208,6 +234,15 @@ function buildRow(video, index) {
     meta.append(gone);
   }
   meta.append(saveState);
+
+  // Jejak platform: video ini sudah benar-benar sampai ke mana saja.
+  // Berguna waktu satu platform gagal dan videonya perlu dijadwalkan ulang
+  // sendirian — tanpa ini harus membuka jadwal satu per satu untuk tahu.
+  const jejak = jejakPlatform(video);
+  if (jejak) {
+    meta.append(el('span', 'sep', '·'));
+    meta.append(jejak);
+  }
   body.append(meta);
 
   // --- panel rincian ---

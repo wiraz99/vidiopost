@@ -16,7 +16,7 @@ import {
   el, html, toast, busy, escapeHtml, formatDayLabel, formatRange,
   tomorrowISO, platformDot, button, setPageTitle
 } from '../utils.js';
-import { QUEUE_LIMIT } from '../config.js';
+import { QUEUE_LIMIT, metaFor } from '../config.js';
 
 let videos = [];
 let channels = [];
@@ -74,9 +74,7 @@ function renderBuilder(channelData) {
     return;
   }
 
-  const stock = videos.filter((v) => v.status === 'stock');
-
-  wrap.append(videoPanel(stock));
+  wrap.append(videoPanel(videos));
   wrap.append(channelPanel());
   wrap.append(optionPanel());
   wrap.append(previewPanel());
@@ -90,40 +88,46 @@ function renderBuilder(channelData) {
   view.querySelector('#refreshPreview').onclick = () => doPreview();
   view.querySelector('#createBtn').onclick = onCreate;
 
+  nomoriUlang();
   doPreview();
 }
 
 // ---------- langkah 1: video ----------
 
-function videoPanel(stock) {
+function videoPanel(daftar) {
   const panel = html('section', 'panel', `
     <div class="step">
       <span class="step-num">1</span>
       <div>
         <div class="panel-title">Video yang ikut</div>
-        <p class="hint">Urutannya mengikuti halaman Stok. Video paling atas jadi V1.</p>
+        <p class="hint">
+          Urutannya mengikuti halaman Stok. Video yang pernah dipakai tetap bisa dipilih lagi —
+          berguna kalau satu platform gagal dan perlu dijadwalkan ulang sendirian.
+        </p>
       </div>
     </div>
     <div class="vlist" id="videoPick"></div>
   `);
   const pick = panel.querySelector('#videoPick');
 
-  if (!stock.length) {
+  if (!daftar.length) {
     pick.append(html('p', 'empty',
-      'Tidak ada video berstatus stok. Tambahkan dulu di <a href="#/stok">Stok Video</a>.'));
+      'Belum ada video. Tambahkan dulu di <a href="#/stok">Stok Video</a>.'));
     return panel;
   }
 
-  stock.forEach((video, i) => {
+  for (const video of daftar) {
     const row = el('label', 'vrow');
     row.style.gridTemplateColumns = 'auto auto 1fr';
 
     const cb = el('input');
     cb.type = 'checkbox';
-    cb.checked = true;
+    // Yang belum pernah dipakai dicentang otomatis; yang sudah pernah dibiarkan
+    // mati supaya tidak ikut terkirim ulang tanpa disengaja.
+    cb.checked = video.status === 'stock';
     cb.dataset.videoId = video.id;
     cb.className = 'video-check';
-    cb.onchange = schedulePreview;
+    cb.onchange = () => { nomoriUlang(); schedulePreview(); };
 
     const body = el('div', 'vbody');
     body.append(el('div', 'vtitle truncate', video.title || video.filename));
@@ -131,13 +135,54 @@ function videoPanel(stock) {
     const meta = el('div', 'vmeta');
     if (!video.title) meta.append(el('span', 'warn-text', 'belum ada judul'));
     if (!video.brief) meta.append(el('span', null, 'belum ada brief'));
+
+    const jejak = jejakPlatform(video);
+    if (jejak) meta.append(jejak);
     if (meta.childElementCount) body.append(meta);
 
-    row.append(cb, el('span', 'vnum', `V${i + 1}`), body);
+    row.append(cb, el('span', 'vnum', ''), body);
     pick.append(row);
-  });
+  }
 
   return panel;
+}
+
+/** Penanda kecil: video ini sudah sampai ke platform mana saja. */
+function jejakPlatform(video) {
+  const bagian = [
+    ['terkirim', video.terkirim, 'sudah terkirim ke'],
+    ['gagal', video.gagal, 'gagal di'],
+    ['antre', video.terjadwal, 'masih mengantre di']
+  ].filter(([, daftar]) => daftar?.length);
+
+  if (!bagian.length) return null;
+
+  const bungkus = el('span', 'jejak');
+  for (const [jenis, daftar, keterangan] of bagian) {
+    for (const platform of daftar) {
+      const dot = platformDot(platform);
+      dot.classList.add('pdot-xs', `pdot-${jenis}`);
+      dot.title = `${keterangan} ${metaFor(platform).name}`;
+      bungkus.append(dot);
+    }
+  }
+  return bungkus;
+}
+
+/**
+ * Nomor rotasi hanya berlaku untuk video yang dicentang, jadi dihitung ulang
+ * tiap kali pilihannya berubah — kalau tidak, V1..Vn menunjuk urutan yang
+ * tidak dipakai algoritmanya.
+ */
+function nomoriUlang() {
+  let n = 0;
+  for (const row of view.querySelectorAll('#videoPick .vrow')) {
+    const cb = row.querySelector('.video-check');
+    const num = row.querySelector('.vnum');
+    if (!cb || !num) continue;
+    num.textContent = cb.checked ? `V${++n}` : '–';
+    num.classList.toggle('vnum-off', !cb.checked);
+  }
 }
 
 // ---------- langkah 2: channel ----------
