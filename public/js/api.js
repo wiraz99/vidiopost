@@ -116,7 +116,9 @@ export const updateLink = (id, body) => patch(`/api/links/${id}`, body);
 export const deleteLink = (id) => del(`/api/links/${id}`);
 
 // ---------- pengaturan ----------
-export const getSettings = () => get('/api/settings');
+export const getSettings = (refresh) => get(`/api/settings${refresh ? '?refresh=1' : ''}`);
+export const getOrphanChannels = (refresh) => get(`/api/channels/yatim${refresh ? '?refresh=1' : ''}`);
+export const migrateChannel = (dari, ke) => post('/api/channels/pindah', { dari, ke });
 export const saveSettings = (body) => patch('/api/settings', body);
 
 // ---------- diagnosa AI ----------

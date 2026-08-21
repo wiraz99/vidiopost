@@ -367,6 +367,10 @@ function buildBody(item, body) {
   body.innerHTML = '';
   const video = videosById.get(item.videoId);
 
+  // Channel yang disambungkan ulang di Buffer punya ID baru; item lama menunjuk
+  // ID yang sudah mati dan pasti ditolak saat dikirim.
+  if (item.channelMati) body.append(panelChannelMati(item));
+
   if (item.error) {
     body.append(html('div', 'alert alert-bad', `<b>Gagal dikirim:</b> ${escapeHtml(item.error)}`));
   }
@@ -384,6 +388,62 @@ function buildBody(item, body) {
   body.append(finalTextBox(item));
 
   if (item.status !== 'sent') body.append(waktuBaris(item));
+}
+
+/**
+ * Item yang menunjuk channel yang sudah tidak ada di Buffer.
+ * Calon penggantinya diambil dari endpoint yang sama dengan halaman Pengaturan,
+ * supaya aturan pencocokannya cuma ada di satu tempat.
+ */
+function panelChannelMati(item) {
+  const box = el('div', 'alert alert-bad');
+  const isi = el('div');
+  isi.append(html('div', null,
+    '<b>Channel ini sudah tidak ada di Buffer.</b> Kemungkinan diputus lalu disambungkan ulang, ' +
+    'sehingga ID-nya berubah. Item ini akan ditolak kalau tetap dikirim.'));
+
+  const baris = el('div', 'row');
+  baris.style.marginTop = '8px';
+  baris.append(el('span', 'muted', 'Mencari channel pengganti…'));
+  isi.append(baris);
+  box.append(isi);
+
+  api.getOrphanChannels().then(({ temuan }) => {
+    const cocok = (temuan || []).find((t) => t.lama.id === item.channelId);
+    baris.innerHTML = '';
+
+    if (!cocok?.kandidat?.length) {
+      baris.append(el('span', 'muted',
+        'Belum ada channel pengganti yang cocok. Buka Pengaturan, tekan "Muat ulang channel" dulu.'));
+      return;
+    }
+
+    const pilih = el('select');
+    pilih.style.maxWidth = '240px';
+    for (const k of cocok.kandidat) {
+      pilih.append(Object.assign(el('option', null, k.label), { value: k.id }));
+    }
+
+    const alihkan = button('btn btn-ghost btn-sm', 'arrowRight', 'Alihkan ke channel ini');
+    alihkan.onclick = async (e) => {
+      const done = busy(e.currentTarget, 'Mengalihkan…');
+      try {
+        const hasil = await api.migrateChannel(item.channelId, pilih.value);
+        toast(hasil.diubah + ' item dialihkan ke channel baru.', 'ok');
+        await refresh();
+      } catch (err) {
+        toast('Gagal mengalihkan: ' + err.message, 'bad');
+        done();
+      }
+    };
+
+    baris.append(pilih, alihkan);
+  }).catch(() => {
+    baris.innerHTML = '';
+    baris.append(el('span', 'muted', 'Daftar channel pengganti tidak bisa dibaca.'));
+  });
+
+  return box;
 }
 
 function sentInfo(item) {

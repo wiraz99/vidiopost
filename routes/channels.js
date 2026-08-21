@@ -9,6 +9,7 @@ const store = require('../lib/store');
 const buffer = require('../lib/buffer');
 const appSettings = require('../lib/settings');
 const { QUEUE_LIMIT } = require('../lib/rotation');
+const { cariPengganti, alihkanItem } = require('../lib/channel-map');
 const { asyncHandler, HttpError } = require('../lib/http');
 
 const router = express.Router();
@@ -70,11 +71,17 @@ router.get('/api/channels/:id/boards', asyncHandler(async (req, res) => {
   if (!channel) throw new HttpError('Channel tidak ditemukan', 404);
   if (channel.platform !== 'pinterest') return res.json({ boards: [], reason: 'Bukan channel Pinterest' });
 
+  const terpilih = () => readSettings()[channel.id]?.boardId || '';
+
   try {
-    const boards = await buffer.channelBoards(channel.account, channel.id, { force: req.query.refresh === '1' });
-    res.json({ boards, selected: readSettings()[channel.id]?.boardId || '' });
+    const { boards, channelAda } = await buffer.channelBoards(channel.account, channel.id, {
+      force: req.query.refresh === '1'
+    });
+    // channelAda=false berarti channel-nya sendiri sudah tidak ada di Buffer
+    // (biasanya karena disambungkan ulang), bukan sekadar belum punya board.
+    res.json({ boards, channelAda, selected: terpilih() });
   } catch (err) {
-    res.json({ boards: [], problem: err.message, selected: readSettings()[channel.id]?.boardId || '' });
+    res.json({ boards: [], channelAda: null, problem: err.message, selected: terpilih() });
   }
 }));
 
@@ -83,6 +90,62 @@ router.get('/api/channels/:id/boards', asyncHandler(async (req, res) => {
 router.patch('/api/channels/:id/settings', asyncHandler(async (req, res) => {
   const efektif = appSettings.saveChannel(req.params.id, req.body || {});
   res.json({ settings: appSettings.readChannelsRaw()[req.params.id] || {}, efektif });
+}));
+
+// ---------------- channel yang disambungkan ulang ----------------
+
+/**
+ * Menyambung ulang channel di Buffer memberi ID baru, sehingga setelan lama
+ * (board, jam tayang) dan item jadwal yang belum terkirim jadi menggantung.
+ * Endpoint ini melaporkan temuannya beserta calon penggantinya.
+ */
+router.get('/api/channels/yatim', asyncHandler(async (req, res) => {
+  let channels = [];
+  let problem = null;
+  try {
+    ({ channels } = await buffer.discoverChannels({ force: req.query.refresh === '1' }));
+  } catch (err) {
+    problem = err.message;
+  }
+
+  const itemJadwal = store.read('plans', []).flatMap((p) => p.items || []);
+  const temuan = cariPengganti({
+    channelsSekarang: channels,
+    setelanTersimpan: readSettings(),
+    itemJadwal
+  });
+
+  res.json({ temuan, problem, usage: buffer.usageSnapshot() });
+}));
+
+/** Pindahkan setelan + item jadwal yang belum terkirim ke channel pengganti. */
+router.post('/api/channels/pindah', asyncHandler(async (req, res) => {
+  const { dari, ke } = req.body || {};
+  if (!dari || !ke) throw new HttpError('Butuh id channel lama (dari) dan baru (ke)', 400);
+  if (dari === ke) throw new HttpError('Channel lama dan barunya sama', 400);
+
+  const { channels } = await buffer.discoverChannels();
+  const tujuan = channels.find((c) => c.id === ke);
+  if (!tujuan) throw new HttpError('Channel tujuan tidak ada di daftar Buffer', 400);
+
+  // 1. setelan channel
+  const settings = readSettings();
+  const setelanLama = settings[dari];
+  let setelanPindah = false;
+  if (setelanLama && Object.keys(setelanLama).length) {
+    // Jangan menimpa setelan yang sudah ada di channel tujuan.
+    settings[tujuan.id] = { ...setelanLama, ...(settings[tujuan.id] || {}) };
+    delete settings[dari];
+    store.write('channel-settings', settings);
+    setelanPindah = true;
+  }
+
+  // 2. item jadwal yang belum terkirim
+  const plans = store.read('plans', []);
+  const { diubah, dilewati } = alihkanItem(plans, dari, tujuan);
+  if (diubah) store.write('plans', plans);
+
+  res.json({ ok: true, setelanPindah, diubah, dilewati, tujuan });
 }));
 
 /** Board yang dipilih untuk sebuah channel; dipakai saat menyusun post. */

@@ -13,6 +13,7 @@ const buffer = require('../lib/buffer');
 const ai = require('../lib/ai');
 const { buildRotation, zonedToUtc, addDays, QUEUE_LIMIT } = require('../lib/rotation');
 const { buildPost } = require('../lib/compose');
+const { alihkanItem } = require('../lib/channel-map');
 const appSettings = require('../lib/settings');
 const { tagsFor } = require('./hashtags');
 const { resolveLink } = require('./links');
@@ -38,6 +39,23 @@ function findPlan(id) {
 const videoMap = () => new Map(readVideos().map((v) => [v.id, v]));
 
 /**
+ * Id channel yang masih ada di Buffer, untuk menandai item yang menunjuk
+ * channel mati (biasanya karena channel-nya disambungkan ulang di Buffer).
+ *
+ * Mengembalikan null kalau daftarnya GAGAL dibaca atau kosong — dan itu penting:
+ * kalau tokennya bermasalah, menganggap "tidak ada channel yang hidup" akan
+ * menandai seluruh jadwal sebagai rusak. Lebih baik tidak melaporkan apa-apa.
+ */
+async function channelHidup() {
+  try {
+    const { channels } = await buffer.discoverChannels();
+    return channels?.length ? new Set(channels.map((c) => c.id)) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Lengkapi satu item dengan teks final + apa saja yang masih kurang.
  *
  * Sengaja DIHITUNG ULANG tiap kali jadwal dibaca, bukan disimpan di plans.json:
@@ -47,7 +65,7 @@ const videoMap = () => new Map(readVideos().map((v) => [v.id, v]));
  * Ini yang membuat "belum lengkap" ketahuan SEBELUM tombol Kirim ditekan,
  * bukan setelah Buffer menolak satu per satu.
  */
-function decorateItem(item, plan, videos, now = Date.now()) {
+function decorateItem(item, plan, videos, hidup = null, now = Date.now()) {
   const video = videos.get(item.videoId);
   const { text, missing, warning } = buildPost({
     platform: item.platform,
@@ -62,6 +80,18 @@ function decorateItem(item, plan, videos, now = Date.now()) {
   const kurang = [];
   if (!video) kurang.push('videonya sudah dihapus dari stok');
   else if (!text.trim()) kurang.push(`caption ${item.platform} belum diisi`);
+
+  // Hanya diperiksa kalau daftar channel benar-benar terbaca (lihat channelHidup).
+  // Item yang SUDAH terkirim tidak ikut ditandai: id lamanya adalah catatan
+  // sejarah yang benar, dan tidak ada tindakan yang perlu diambil untuknya.
+  const channelMati = !!hidup && item.status !== 'sent' && !hidup.has(item.channelId);
+  if (channelMati) {
+    kurang.push(
+      `channel "${item.channelLabel}" sudah tidak ada di Buffer — kemungkinan disambungkan ` +
+      'ulang sehingga ID-nya berubah. Alihkan ke channel penggantinya dulu.'
+    );
+  }
+
   kurang.push(...missing);
 
   const isPast = new Date(item.dueAt).getTime() <= now;
@@ -76,6 +106,7 @@ function decorateItem(item, plan, videos, now = Date.now()) {
   return {
     ...item,
     isPast,
+    channelMati,
     missing: kurang,
     ready: !kurang.length && !isPast,
     state,
@@ -222,13 +253,14 @@ router.post('/api/plan', asyncHandler(async (req, res) => {
   res.json({ plan, matrix, warnings });
 }));
 
-router.get('/api/plan', (req, res) => {
+router.get('/api/plan', asyncHandler(async (req, res) => {
   // Ringkasan saja — items bisa panjang sekali. Tapi ringkasannya dibuat
   // cukup lengkap supaya kartu di daftar bisa langsung menjawab
   // "sudah sejauh mana" dan "apa yang berikutnya tayang".
+  const hidup = await channelHidup();
   const videos = videoMap();
   const plans = readPlans().map((p) => {
-    const items = p.items.map((item) => decorateItem(item, p, videos));
+    const items = p.items.map((item) => decorateItem(item, p, videos, hidup));
     return {
       id: p.id,
       createdAt: p.createdAt,
@@ -239,11 +271,12 @@ router.get('/api/plan', (req, res) => {
     };
   });
   res.json({ plans });
-});
+}));
 
 router.get('/api/plan/:id', asyncHandler(async (req, res) => {
   const { plan } = findPlan(req.params.id);
-  const items = plan.items.map((item) => decorateItem(item, plan, videoMap()));
+  const hidup = await channelHidup();
+  const items = plan.items.map((item) => decorateItem(item, plan, videoMap(), hidup));
   res.json({ plan: { ...plan, items }, ringkas: summarize(items, plan) });
 }));
 
@@ -294,7 +327,8 @@ router.patch('/api/plan/:id/item/:index', asyncHandler(async (req, res) => {
   });
   writePlans(plans);
 
-  res.json({ item: decorateItem(item, plan, videoMap()) });
+  const hidup = await channelHidup();
+  res.json({ item: decorateItem(item, plan, videoMap(), hidup) });
 }));
 
 /**
@@ -331,7 +365,8 @@ router.post('/api/plan/:id/reschedule', asyncHandler(async (req, res) => {
   plan.startDate = startDate;
   writePlans(plans);
 
-  const items = plan.items.map((item) => decorateItem(item, plan, videoMap()));
+  const hidup = await channelHidup();
+  const items = plan.items.map((item) => decorateItem(item, plan, videoMap(), hidup));
   const masihLewat = items.filter((i) => i.isPast && i.status !== 'sent').length;
   res.json({
     plan: { ...plan, items },
@@ -382,9 +417,11 @@ router.post('/api/plan/:id/send/:index', asyncHandler(async (req, res) => {
   const item = plan.items[Number(req.params.index)];
   if (!item) throw new HttpError('Item jadwal tidak ditemukan', 404);
 
+  const hidup = await channelHidup();
+
   if (item.status === 'sent') {
     return res.json({
-      item: decorateItem(item, plan, videoMap()),
+      item: decorateItem(item, plan, videoMap(), hidup),
       skipped: true,
       reason: 'Sudah terkirim sebelumnya'
     });
@@ -412,7 +449,7 @@ router.post('/api/plan/:id/send/:index', asyncHandler(async (req, res) => {
       ? `Belum lengkap: ${missing.join(', ')}`
       : `Belum ada teks untuk ${item.channelLabel}. Generate caption dulu.`;
     writePlans(plans);
-    return res.json({ item: decorateItem(item, plan, videoMap()), usage: buffer.usageSnapshot() });
+    return res.json({ item: decorateItem(item, plan, videoMap(), hidup), usage: buffer.usageSnapshot() });
   }
 
   // Buffer mengunduh video dari PUBLIC_BASE_URL. Kalau URL-nya tidak bisa
@@ -422,7 +459,7 @@ router.post('/api/plan/:id/send/:index', asyncHandler(async (req, res) => {
     item.status = 'error';
     item.error = `Video tidak bisa diunduh Buffer: ${mediaCheck.reason}`;
     writePlans(plans);
-    return res.json({ item: decorateItem(item, plan, videoMap()), mediaCheck, usage: buffer.usageSnapshot() });
+    return res.json({ item: decorateItem(item, plan, videoMap(), hidup), mediaCheck, usage: buffer.usageSnapshot() });
   }
 
   const sekarang = req.body?.sekarang === true;
@@ -454,7 +491,7 @@ router.post('/api/plan/:id/send/:index', asyncHandler(async (req, res) => {
   writePlans(plans);
 
   res.json({
-    item: decorateItem(item, plan, videoMap()),
+    item: decorateItem(item, plan, videoMap(), hidup),
     catatan: catatanKirim,
     usage: buffer.usageSnapshot()
   });
@@ -557,7 +594,8 @@ router.post('/api/plan/:id/sync', asyncHandler(async (req, res) => {
     );
   }
 
-  const items = plan.items.map((item) => decorateItem(item, plan, videoMap()));
+  const hidup = await channelHidup();
+  const items = plan.items.map((item) => decorateItem(item, plan, videoMap(), hidup));
   res.json({
     plan: { ...plan, items },
     ringkas: summarize(items, plan),

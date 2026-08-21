@@ -37,9 +37,12 @@ export async function render(container) {
   await muat();
 }
 
-async function muat() {
+async function muat(refresh = false) {
   try {
-    data = await api.getSettings();
+    data = await api.getSettings(refresh);
+    // Channel yang disambungkan ulang di Buffer dapat ID baru, jadi setelan
+    // lamanya menggantung. Ini yang mendeteksinya.
+    data.yatim = await api.getOrphanChannels().then((r) => r.temuan).catch(() => []);
     // Status sesi datang dari endpoint terpisah; kalau gagal, panel keamanan
     // tetap tampil, cuma tanpa nama penggunanya.
     data.sesi = await api.authStatus().catch(() => null);
@@ -163,9 +166,36 @@ async function simpanUmum(patch) {
 
 function panelChannel() {
   const panel = html('section', 'panel', `
-    <div class="panel-title">Per channel</div>
-    <p class="hint">Kosongkan sebuah pilihan untuk ikut setelan umum di atas.</p>
+    <div class="row-between" id="kepalaChannel">
+      <div>
+        <div class="panel-title" style="margin:0">Per channel</div>
+        <p class="hint" style="margin:4px 0 0">Kosongkan sebuah pilihan untuk ikut setelan umum di atas.</p>
+      </div>
+    </div>
   `);
+
+  // Daftar channel di-cache 1 jam DAN tersimpan di volume permanen, jadi deploy
+  // ulang pun tidak menyegarkannya. Tanpa tombol ini, channel yang baru
+  // disambungkan ulang di Buffer tidak muncul sampai cachenya kedaluwarsa.
+  const muatUlang = button('btn btn-ghost btn-sm', 'refresh', 'Muat ulang channel');
+  muatUlang.onclick = async (e) => {
+    const done = busy(e.currentTarget, 'Mengambil…');
+    try {
+      await muat(true);
+      toast('Daftar channel diambil ulang dari Buffer.', 'ok');
+    } catch (err) {
+      toast('Gagal: ' + err.message, 'bad');
+      done();
+    }
+  };
+  panel.querySelector('#kepalaChannel').append(muatUlang);
+
+  const umur = data.usage?.cache?.channelUmurMenit;
+  if (umur != null) {
+    panel.append(el('p', 'note', 'Daftar channel terakhir diambil ' + umur + ' menit lalu.'));
+  }
+
+  for (const y of data.yatim || []) panel.append(kartuYatim(y));
 
   if (data.channelProblem) {
     panel.append(html('div', 'alert alert-bad',
@@ -179,6 +209,76 @@ function panelChannel() {
 
   for (const channel of data.channels) panel.append(kartuChannel(channel));
   return panel;
+}
+
+/**
+ * Tawaran memindahkan setelan channel yang disambungkan ulang.
+ * Sengaja menunggu persetujuan: menebak pengganti yang salah berarti setelan
+ * nyasar ke channel lain tanpa disadari.
+ */
+function kartuYatim(y) {
+  const box = el('div', 'alert alert-warn');
+  const isi = el('div');
+
+  isi.append(html('div', null,
+    '<b>' + escapeHtml(y.lama.label) + '</b> sepertinya disambungkan ulang di Buffer, jadi ID-nya berubah.'));
+
+  const rincian = [];
+  if (y.punyaSetelan) rincian.push('setelan channel (board / jam tayang)');
+  if (y.itemBelumTerkirim) rincian.push(y.itemBelumTerkirim + ' item jadwal yang belum terkirim');
+  if (rincian.length) {
+    isi.append(el('p', 'note', 'Yang masih menunjuk ID lama: ' + rincian.join(' dan ') + '.'));
+  }
+
+  if (!y.kandidat.length) {
+    isi.append(el('p', 'note',
+      'Belum ada channel pengganti yang cocok. Tekan "Muat ulang channel" dulu; kalau tetap ' +
+      'kosong, pastikan channelnya memang sudah tersambung lagi di Buffer.'));
+    box.append(isi);
+    return box;
+  }
+
+  const baris = el('div', 'row');
+  baris.style.marginTop = '8px';
+
+  const pilih = el('select');
+  pilih.style.maxWidth = '260px';
+  for (const k of y.kandidat) {
+    pilih.append(Object.assign(el('option', null, k.label), { value: k.id }));
+  }
+
+  const pindah = button('btn btn-ghost btn-sm', 'arrowRight', 'Pindahkan setelannya');
+  pindah.onclick = async (e) => {
+    const tujuan = y.kandidat.find((k) => k.id === pilih.value);
+    const setuju = confirm(
+      'Pindahkan setelan dan jadwal yang belum terkirim dari "' + y.lama.label +
+      '" ke "' + tujuan.label + '"?\n\nItem yang sudah terkirim tidak diubah.'
+    );
+    if (!setuju) return;
+
+    const done = busy(e.currentTarget, 'Memindahkan…');
+    try {
+      const hasil = await api.migrateChannel(y.lama.id, pilih.value);
+      const bagian = [];
+      if (hasil.setelanPindah) bagian.push('setelan dipindah');
+      if (hasil.diubah) bagian.push(hasil.diubah + ' item jadwal dialihkan');
+      toast('Selesai' + (bagian.length ? ': ' + bagian.join(', ') : '') + '.', 'ok');
+      await muat(true);
+    } catch (err) {
+      toast('Gagal memindahkan: ' + err.message, 'bad');
+      done();
+    }
+  };
+
+  baris.append(pilih, pindah);
+  isi.append(baris);
+
+  if (!y.yakin) {
+    isi.append(el('p', 'note', 'Ada lebih dari satu kemungkinan — pastikan kamu memilih yang benar.'));
+  }
+
+  box.append(isi);
+  return box;
 }
 
 function kartuChannel(channel) {
@@ -304,16 +404,26 @@ function boardPicker(channel, simpan) {
     select.innerHTML = '';
     select.append(el('option', null, 'Memuat…'));
     try {
-      const { boards, selected, problem } = await api.getChannelBoards(channel.id, force);
+      const { boards, selected, problem, channelAda } = await api.getChannelBoards(channel.id, force);
       select.innerHTML = '';
 
       if (problem || !boards.length) {
         select.append(el('option', null, 'Tidak bisa dibaca'));
         note.className = 'note bad-text';
-        note.innerHTML = problem
-          ? escapeHtml(problem)
-          : 'Belum ada board terbaca. Kalau baru dibuat, tekan <b>Muat ulang</b>; kalau tetap kosong, ' +
-            'putuskan lalu sambungkan ulang channel Pinterest di Buffer.';
+
+        if (problem) {
+          note.innerHTML = escapeHtml(problem);
+        } else if (channelAda === false) {
+          // Menyuruh "sambungkan ulang" di sini justru salah — itu penyebabnya.
+          note.innerHTML =
+            'Channel ini <b>sudah tidak ada di Buffer</b>. Biasanya karena diputus lalu ' +
+            'disambungkan ulang, sehingga Buffer memberi ID baru. Tekan ' +
+            '<b>Muat ulang channel</b> di atas, lalu pindahkan setelannya ke channel yang baru.';
+        } else {
+          note.innerHTML =
+            'Channelnya ada, tapi belum ada board yang terbaca. Kalau boardnya baru dibuat, ' +
+            'tekan <b>Muat ulang</b> — Buffer kadang butuh beberapa menit menyinkronkannya.';
+        }
         return;
       }
 

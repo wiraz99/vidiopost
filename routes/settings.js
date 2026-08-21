@@ -25,7 +25,11 @@ router.get('/api/settings', asyncHandler(async (req, res) => {
   let channels = [];
   let channelProblem = null;
   try {
-    ({ channels } = await buffer.discoverChannels());
+    // ?refresh=1 memaksa daftar channel diambil ulang dari Buffer. Ini satu-satunya
+    // jalan keluar kalau sebuah channel disambungkan ulang dan ID-nya berubah:
+    // cachenya bertahan 1 jam DAN ikut tersimpan di volume permanen, jadi
+    // deploy ulang pun tidak membersihkannya.
+    ({ channels } = await buffer.discoverChannels({ force: req.query.refresh === '1' }));
   } catch (err) {
     channelProblem = err.message;
   }

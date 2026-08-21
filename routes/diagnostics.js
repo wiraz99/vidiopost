@@ -13,6 +13,7 @@ const media = require('../lib/media');
 const buffer = require('../lib/buffer');
 const ai = require('../lib/ai');
 const { periksaUntukPinterest } = require('../lib/linkcheck');
+const { cariPengganti } = require('../lib/channel-map');
 const { resolveLink } = require('./links');
 const { asyncHandler } = require('../lib/http');
 
@@ -91,6 +92,30 @@ router.get('/api/diagnostics', asyncHandler(async (req, res) => {
         acc[c.account] = (acc[c.account] || 0) + 1;
         return acc;
       }, {});
+      // Channel yang disambungkan ulang di Buffer dapat ID baru, sehingga setelan
+      // dan jadwal lama menunjuk channel yang sudah tidak ada. Tanpa pemeriksaan
+      // ini, gejalanya cuma "board tidak terbaca" tanpa sebab yang jelas.
+      const yatim = cariPengganti({
+        channelsSekarang: channels,
+        setelanTersimpan: store.read('channel-settings', {}),
+        itemJadwal: store.read('plans', []).flatMap((p) => p.items || [])
+      });
+
+      if (yatim.length) {
+        const rincian = yatim.map((y) => {
+          const jumlah = y.itemBelumTerkirim ? `, ${y.itemBelumTerkirim} item jadwal` : '';
+          return `${y.lama.label}${jumlah}`;
+        }).join('; ');
+
+        checks.push(bad('Channel disambungkan ulang',
+          `Ada ${yatim.length} channel yang setelan/jadwalnya menunjuk ID yang sudah tidak ada ` +
+          `di Buffer (${rincian}). Itu terjadi kalau channel diputus lalu disambungkan ulang — ` +
+          'Buffer memberi ID baru.',
+          yatim.some((y) => y.yakin)
+            ? 'Buka Pengaturan; di sana ada tawaran memindahkan setelan ke channel penggantinya.'
+            : 'Buka Pengaturan, tekan "Muat ulang channel", lalu pilih channel penggantinya.'));
+      }
+
       checks.push(ok('Channel Buffer',
         `${channels.length} channel terbaca (akun A: ${perAkun.A || 0}, akun B: ${perAkun.B || 0}) — sumber: ${source}`));
 

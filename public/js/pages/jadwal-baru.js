@@ -191,14 +191,34 @@ function channelPanel() {
   const panel = html('section', 'panel', `
     <div class="step">
       <span class="step-num">2</span>
-      <div>
-        <div class="panel-title">Channel tujuan</div>
-        <p class="hint">Angka abu-abu = post yang sekarang mengantre di Buffer (batas ${QUEUE_LIMIT}/channel).</p>
+      <div class="grow">
+        <div class="row-between">
+          <div class="panel-title" style="margin:0">Channel tujuan</div>
+          <button class="btn btn-ghost btn-sm" id="muatChannel">Muat ulang channel</button>
+        </div>
+        <p class="hint" style="margin-top:6px">Angka abu-abu = post yang sekarang mengantre di Buffer (batas ${QUEUE_LIMIT}/channel).</p>
       </div>
     </div>
     <div class="vlist" id="channelPick"></div>
   `);
   const pick = panel.querySelector('#channelPick');
+
+  // Daftar channel di-cache 1 jam dan ikut tersimpan di volume permanen, jadi
+  // channel yang baru disambungkan ulang di Buffer tidak muncul sampai
+  // cachenya kedaluwarsa — deploy ulang pun tidak menolong.
+  panel.querySelector('#muatChannel').onclick = async (e) => {
+    const done = busy(e.currentTarget, 'Mengambil…');
+    try {
+      const segar = await api.getChannelsDetail(true);
+      channels = segar.channels || [];
+      view.innerHTML = '';
+      renderBuilder(segar);
+      toast('Daftar channel diambil ulang dari Buffer.', 'ok');
+    } catch (err) {
+      toast('Gagal: ' + err.message, 'bad');
+      done();
+    }
+  };
 
   for (const channel of channels) {
     const used = queue.counts?.[channel.id] || 0;
@@ -283,19 +303,29 @@ function buildBoardPicker(channel) {
     select.append(el('option', null, 'Memuat board…'));
 
     try {
-      const { boards, selected, problem } = await api.getChannelBoards(channel.id, force);
+      const { boards, selected, problem, channelAda } = await api.getChannelBoards(channel.id, force);
       select.innerHTML = '';
       note.innerHTML = '';
 
       if (problem || !boards.length) {
         select.append(el('option', null, 'Board tidak bisa dibaca'));
         value.className = 'boardrow-value bad';
-        value.textContent = problem ? `gagal dibaca: ${problem}` : 'belum ada board terbaca';
         edit.hidden = false;
         tampilkanEditor(true);
-        if (!problem) {
-          note.innerHTML = 'Kalau board-nya baru dibuat, tekan <b>Muat ulang</b>. Kalau tetap kosong, ' +
-            'putuskan lalu sambungkan ulang channel Pinterest di Buffer.';
+
+        if (problem) {
+          value.textContent = `gagal dibaca: ${problem}`;
+        } else if (channelAda === false) {
+          // Menyarankan "sambungkan ulang" di sini justru salah — itu sebabnya.
+          value.textContent = 'channel ini sudah tidak ada di Buffer';
+          note.innerHTML =
+            'Biasanya karena diputus lalu disambungkan ulang, sehingga Buffer memberi ID baru. ' +
+            'Tekan <b>Muat ulang channel</b> di atas, lalu pindahkan setelannya lewat halaman ' +
+            '<a href="#/pengaturan">Pengaturan</a>.';
+        } else {
+          value.textContent = 'belum ada board terbaca';
+          note.innerHTML = 'Kalau board-nya baru dibuat, tekan <b>Muat ulang</b> — Buffer kadang ' +
+            'butuh beberapa menit menyinkronkannya.';
         }
         return;
       }
