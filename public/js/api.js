@@ -82,6 +82,8 @@ export const getChannelsDetail = (refresh) => get(`/api/channels/detail${refresh
 export const getQueue = () => get('/api/queue');
 export const getChannelBoards = (id, refresh) => get(`/api/channels/${id}/boards${refresh ? '?refresh=1' : ''}`);
 export const setChannelSettings = (id, body) => patch(`/api/channels/${id}/settings`, body);
+/** Balasan mentah Buffer untuk pembacaan board — dipakai kalau board tak terbaca. */
+export const diagnoseChannelBoards = (id) => get(`/api/channels/${id}/boards?refresh=1&diagnosa=1`);
 export const getUsage = () => get('/api/usage');
 export const getHealth = () => get('/api/health');
 

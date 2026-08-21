@@ -73,13 +73,41 @@ router.get('/api/channels/:id/boards', asyncHandler(async (req, res) => {
 
   const terpilih = () => readSettings()[channel.id]?.boardId || '';
 
+  // ?rinci=1 menyertakan jejak tiap percobaan apa adanya; ?diagnosa=1 juga
+  // menanyakan bentuk skema Pinterest ke Buffer. Keduanya hanya dipakai saat
+  // user menekan tombol periksa, jadi tidak membebani pemakaian biasa.
+  const rinci = req.query.rinci === '1' || req.query.diagnosa === '1';
+
   try {
-    const { boards, channelAda } = await buffer.channelBoards(channel.account, channel.id, {
+    const { boards, channelAda, jejak } = await buffer.channelBoards(channel.account, channel.id, {
       force: req.query.refresh === '1'
     });
-    // channelAda=false berarti channel-nya sendiri sudah tidak ada di Buffer
-    // (biasanya karena disambungkan ulang), bukan sekadar belum punya board.
-    res.json({ boards, channelAda, selected: terpilih() });
+
+    const hasil = { boards, channelAda, selected: terpilih() };
+    if (rinci) hasil.jejak = jejak;
+
+    // Kalau channelnya terbukti sudah tidak ada, daftar channel yang kita pegang
+    // pasti basi — segarkan sendiri, jangan menunggu user menekan tombol dan
+    // jangan menunggu masa berlaku cache habis (1 jam, dan tersimpan permanen).
+    if (channelAda === false) {
+      try {
+        const segar = await buffer.discoverChannels({ force: true });
+        hasil.channelDisegarkan = true;
+        hasil.channelSekarang = segar.channels.map((c) => ({ id: c.id, platform: c.platform, label: c.label }));
+      } catch (err) {
+        hasil.segarError = err.message;
+      }
+    }
+
+    if (req.query.diagnosa === '1') {
+      try {
+        hasil.skema = await buffer.introspectPinterest(channel.account);
+      } catch (err) {
+        hasil.skemaError = err.message;
+      }
+    }
+
+    res.json(hasil);
   } catch (err) {
     res.json({ boards: [], channelAda: null, problem: err.message, selected: terpilih() });
   }

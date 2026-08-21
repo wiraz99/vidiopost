@@ -417,13 +417,16 @@ function boardPicker(channel, simpan) {
           // Menyuruh "sambungkan ulang" di sini justru salah — itu penyebabnya.
           note.innerHTML =
             'Channel ini <b>sudah tidak ada di Buffer</b>. Biasanya karena diputus lalu ' +
-            'disambungkan ulang, sehingga Buffer memberi ID baru. Tekan ' +
-            '<b>Muat ulang channel</b> di atas, lalu pindahkan setelannya ke channel yang baru.';
+            'disambungkan ulang, sehingga Buffer memberi ID baru. ' +
+            'Daftar channel sudah disegarkan otomatis — tekan <b>Muat ulang channel</b> ' +
+            'di atas untuk menampilkan channel barunya beserta tawaran memindahkan setelan.';
         } else {
           note.innerHTML =
             'Channelnya ada, tapi belum ada board yang terbaca. Kalau boardnya baru dibuat, ' +
             'tekan <b>Muat ulang</b> — Buffer kadang butuh beberapa menit menyinkronkannya.';
         }
+
+        wrap.append(tombolPeriksa(channel));
         return;
       }
 
@@ -451,6 +454,60 @@ function boardPicker(channel, simpan) {
   reload.onclick = () => load(true);
   load(false);
   return wrap;
+}
+
+/**
+ * Kalau board tetap tidak terbaca, tebak-tebakan tidak menolong. Tombol ini
+ * menanyakan langsung ke Buffer — tiap cara pembacaan dicoba dan balasannya
+ * ditampilkan apa adanya, termasuk bentuk skema Pinterest menurut Buffer.
+ */
+function tombolPeriksa(channel) {
+  const kotak = el('div');
+  kotak.style.marginTop = '8px';
+
+  const tombol = button('btn btn-ghost btn-sm', 'alert', 'Periksa kenapa');
+  kotak.append(tombol);
+
+  const hasil = el('pre', 'finaltext');
+  hasil.hidden = true;
+  kotak.append(hasil);
+
+  tombol.onclick = async (e) => {
+    const done = busy(e.currentTarget, 'Menanya Buffer…');
+    try {
+      const d = await api.diagnoseChannelBoards(channel.id);
+      const baris = [];
+
+      for (const j of d.jejak || []) {
+        baris.push('cara: ' + j.cara);
+        if (j.error) baris.push('  error   : ' + j.error);
+        else {
+          baris.push('  channel : ' + (j.channelAda ? 'ada' : 'TIDAK ADA'));
+          baris.push('  board   : ' + j.jumlah);
+          if (j.mentah) baris.push('  mentah  : ' + JSON.stringify(j.mentah));
+        }
+        baris.push('');
+      }
+
+      if (d.skema) {
+        baris.push('field PinterestMetadata menurut Buffer:');
+        baris.push('  ' + (d.skema.pinterestMetadata.join(', ') || '(tipe ini tidak ada)'));
+        baris.push('tipe metadata channel yang dikenal:');
+        baris.push('  ' + (d.skema.tipeMetadata.join(', ') || '-'));
+      }
+      if (d.skemaError) baris.push('skema gagal dibaca: ' + d.skemaError);
+
+      hasil.textContent = baris.join('\n') || 'Buffer tidak mengembalikan keterangan apa pun.';
+      hasil.hidden = false;
+      done();
+    } catch (err) {
+      hasil.textContent = 'Gagal memeriksa: ' + err.message;
+      hasil.hidden = false;
+      done();
+    }
+  };
+
+  return kotak;
 }
 
 // ================= keamanan =================
