@@ -1,7 +1,12 @@
 # Video Post App
 
 Stok video → jadwal rotasi otomatis → kirim ke Buffer → pantau insight.
-Untuk brand **Arachynana** (Sale Pisang Granola), 6 channel lewat 2 akun Buffer gratis.
+
+Beberapa brand dalam satu aplikasi, dipisah lewat **grup**: video, channel,
+hashtag dan tautan masing-masing milik satu grup, dan isi grup yang berbeda
+tidak bisa saling tercampur. Jumlah akun Buffer bebas — tiap variabel
+`BUFFER_TOKEN_<NAMA>` yang terisi jadi satu akun (paket gratis Buffer memberi
+3 channel per akun).
 
 ## Ide dasarnya
 

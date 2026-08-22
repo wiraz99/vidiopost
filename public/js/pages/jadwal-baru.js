@@ -79,7 +79,7 @@ function renderBuilder(channelData) {
         channelData.problem ||
         (adaDiGrupLain
           ? 'Channelnya ada, tapi belum ditetapkan ke grup ini. Buka Pengaturan untuk menetapkannya.'
-          : 'Isi BUFFER_TOKEN_A / BUFFER_TOKEN_B di .env, lalu muat ulang.')
+          : 'Isi BUFFER_TOKEN_A (dan B, C, … untuk akun Buffer berikutnya) di .env, lalu muat ulang.')
       )}</div>
     `));
     if (tanpaGrup.length) wrap.append(panelTanpaGrup());

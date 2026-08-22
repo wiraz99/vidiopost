@@ -590,7 +590,7 @@ function belumAda() {
       <div class="panel-title">Yang perlu dilakukan</div>
       <ol style="margin:0;padding-left:20px;font-size:14px;line-height:1.9">
         <li>Buka Buffer → <b>Settings → API</b>, buat API key</li>
-        <li>Isi <code>BUFFER_TOKEN_A</code> dan <code>BUFFER_TOKEN_B</code>, lalu deploy ulang</li>
+        <li>Isi <code>BUFFER_TOKEN_A</code> (dan B, C, … untuk akun berikutnya), lalu deploy ulang</li>
       </ol>
     `));
   } else {

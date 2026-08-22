@@ -75,7 +75,13 @@ async function refreshUsage() {
     const pct = Math.min(100, (u.dayCount / u.dayLimit) * 100);
     fill.style.width = `${pct}%`;
     fill.className = `usage-fill${pct > 90 ? ' full' : pct > 70 ? ' hot' : ''}`;
-    num.textContent = `${u.dayCount} / ${u.dayLimit} request`;
+
+    // Batas 250/hari berlaku PER token, jadi angka di sini milik akun yang
+    // paling dekat batasnya — akun itulah yang duluan menolak pengiriman.
+    // Menampilkan totalnya justru menipu: 350/1000 terlihat lega padahal satu
+    // akun sudah mentok dan pengiriman lewat akun itu sudah ditolak.
+    const akun = u.perAkun?.length > 1 && u.akunTerpadat ? ` · akun ${u.akunTerpadat}` : '';
+    num.textContent = `${u.dayCount} / ${u.dayLimit} request${akun}`;
     box.hidden = false;
   } catch {
     box.hidden = true;

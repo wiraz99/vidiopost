@@ -94,8 +94,7 @@ app.get('/api/health', (req, res) => {
     publicBaseUrl: media.PUBLIC_BASE_URL,
     publicBaseUrlLooksLocal: media.baseUrlLooksLocal(),
     hermes: !!process.env.HERMES_API_URL,
-    bufferA: !!process.env.BUFFER_TOKEN_A,
-    bufferB: !!process.env.BUFFER_TOKEN_B,
+    bufferAkun: require('./lib/buffer').daftarAkun(),
     timezone: process.env.TIMEZONE || 'Asia/Jakarta'
   });
 });
@@ -121,8 +120,11 @@ app.listen(PORT, () => {
   } else {
     console.log('  login  : aktif');
   }
-  if (!process.env.BUFFER_TOKEN_A && !process.env.BUFFER_TOKEN_B) {
-    console.log('  ⚠️  BUFFER_TOKEN_A/B belum diisi — daftar channel & pengiriman tidak akan jalan');
+  const akunBuffer = require('./lib/buffer').daftarAkun();
+  if (!akunBuffer.length) {
+    console.log('  ⚠️  BUFFER_TOKEN_* belum diisi — daftar channel & pengiriman tidak akan jalan');
+  } else {
+    console.log(`  buffer : ${akunBuffer.length} akun (${akunBuffer.join(', ')})`);
   }
   if (!process.env.HERMES_API_URL) {
     console.log('  ⚠️  HERMES_API_URL belum diisi — caption & saran judul tidak akan jalan');

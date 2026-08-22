@@ -83,10 +83,11 @@ router.get('/api/diagnostics', asyncHandler(async (req, res) => {
   }
 
   // ---------- token & channel Buffer ----------
-  const punyaToken = { A: buffer.hasToken('A'), B: buffer.hasToken('B') };
-  if (!punyaToken.A && !punyaToken.B) {
-    checks.push(bad('Token Buffer', 'BUFFER_TOKEN_A dan BUFFER_TOKEN_B belum diisi.',
-      'Isi keduanya di Coolify. Token wajib punya scope posts:write.'));
+  const akunBuffer = buffer.daftarAkun();
+  if (!akunBuffer.length) {
+    checks.push(bad('Token Buffer', 'Belum ada satu pun BUFFER_TOKEN_* yang diisi.',
+      'Isi BUFFER_TOKEN_A (dan B, C, … untuk akun Buffer berikutnya) di Coolify. ' +
+      'Token wajib punya scope posts:write.'));
   } else {
     try {
       const { channels, source } = await buffer.discoverChannels();
@@ -119,7 +120,9 @@ router.get('/api/diagnostics', asyncHandler(async (req, res) => {
       }
 
       checks.push(ok('Channel Buffer',
-        `${channels.length} channel terbaca (akun A: ${perAkun.A || 0}, akun B: ${perAkun.B || 0}) — sumber: ${source}`));
+        `${channels.length} channel terbaca (` +
+        akunBuffer.map((a) => `akun ${a}: ${perAkun[a] || 0}`).join(', ') +
+        `) — sumber: ${source}`));
 
       // ---------- grup ----------
       // Channel tanpa grup tidak muncul di grup mana pun, jadi tanpa laporan ini

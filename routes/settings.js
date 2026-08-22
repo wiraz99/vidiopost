@@ -68,8 +68,9 @@ router.get('/api/settings', asyncHandler(async (req, res) => {
       dataDir: store.DATA_DIR,
       hermes: !!process.env.HERMES_API_URL,
       hermesModel: process.env.HERMES_MODEL || 'hermes',
-      bufferA: !!process.env.BUFFER_TOKEN_A,
-      bufferB: !!process.env.BUFFER_TOKEN_B
+      // Daftar akun Buffer yang tokennya terisi, bukan lagi dua nama tetap.
+      // Menambah akun cukup dengan variabel BUFFER_TOKEN_<NAMA> baru.
+      bufferAkun: buffer.daftarAkun()
     },
     usage: buffer.usageSnapshot()
   });

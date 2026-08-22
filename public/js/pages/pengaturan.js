@@ -117,37 +117,77 @@ function kartuTanpaGrup(belum) {
   isi.append(html('div', null,
     `<b>${belum.length} channel belum punya grup</b> — belum bisa dipakai menjadwalkan apa pun.`));
 
-  for (const channel of belum) {
-    const baris = el('div', 'row');
-    baris.style.marginTop = '8px';
-
-    const label = el('span', 'grow truncate');
-    label.append(platformDot(channel.platform), el('span', null, ' ' + channel.label));
-
+  const pilihGrup = (lebar = '200px') => {
     const pilih = el('select');
-    pilih.style.maxWidth = '200px';
+    pilih.style.maxWidth = lebar;
     pilih.append(Object.assign(el('option', null, '— pilih grup —'), { value: '' }));
     for (const g of data.groups || []) {
       pilih.append(Object.assign(el('option', null, g.name), { value: g.id }));
     }
+    return pilih;
+  };
 
-    const simpan = button('btn btn-ghost btn-sm', 'check', 'Tetapkan');
-    simpan.onclick = async (e) => {
-      if (!pilih.value) return toast('Pilih grupnya dulu.', 'bad');
-      const done = busy(e.currentTarget, 'Menetapkan…');
-      try {
-        await api.assignChannels(pilih.value, [channel.id]);
-        toast(`${channel.label} masuk grup yang dipilih.`, 'ok');
-        document.dispatchEvent(new CustomEvent('grup-diubah'));
-        await muat();
-      } catch (err) {
-        toast('Gagal: ' + err.message, 'bad');
-        done();
-      }
-    };
+  const tetapkan = async (tombol, groupId, ids, pesan) => {
+    if (!groupId) return toast('Pilih grupnya dulu.', 'bad');
+    const done = busy(tombol, 'Menetapkan…');
+    try {
+      await api.assignChannels(groupId, ids);
+      toast(pesan, 'ok');
+      document.dispatchEvent(new CustomEvent('grup-diubah'));
+      await muat();
+    } catch (err) {
+      toast('Gagal: ' + err.message, 'bad');
+      done();
+    }
+  };
 
-    baris.append(label, pilih, simpan);
-    isi.append(baris);
+  // Satu akun Buffer baru selalu membawa beberapa channel sekaligus, dan
+  // semuanya milik brand yang sama — itu memang alasan akun itu dibuat.
+  // Menetapkannya satu per satu cuma kerja berulang.
+  const perAkun = new Map();
+  for (const c of belum) {
+    if (!perAkun.has(c.account)) perAkun.set(c.account, []);
+    perAkun.get(c.account).push(c);
+  }
+
+  for (const [akun, channels] of perAkun) {
+    if (channels.length > 1) {
+      const baris = el('div', 'row');
+      baris.style.marginTop = '10px';
+
+      const label = el('span', 'grow');
+      label.append(el('b', null, `Semua ${channels.length} channel akun ${akun}`));
+
+      const pilih = pilihGrup('180px');
+      const simpan = button('btn btn-ghost btn-sm', 'check', 'Tetapkan semua');
+      simpan.onclick = (e) => tetapkan(
+        e.currentTarget, pilih.value, channels.map((c) => c.id),
+        `${channels.length} channel akun ${akun} masuk grup yang dipilih.`
+      );
+
+      baris.append(label, pilih, simpan);
+      isi.append(baris);
+      isi.append(el('p', 'note', 'Atau tetapkan satu per satu di bawah ini.'));
+    }
+
+    for (const channel of channels) {
+      const baris = el('div', 'row');
+      baris.style.marginTop = '8px';
+
+      const label = el('span', 'grow truncate');
+      label.append(platformDot(channel.platform),
+        el('span', null, ` ${channel.label} · akun ${channel.account}`));
+
+      const pilih = pilihGrup();
+      const simpan = button('btn btn-ghost btn-sm', 'check', 'Tetapkan');
+      simpan.onclick = (e) => tetapkan(
+        e.currentTarget, pilih.value, [channel.id],
+        `${channel.label} masuk grup yang dipilih.`
+      );
+
+      baris.append(label, pilih, simpan);
+      isi.append(baris);
+    }
   }
 
   box.append(isi);
@@ -892,12 +932,12 @@ function panelServer() {
     `));
   }
 
+  const akun = s.bufferAkun || [];
   const baris = [
     ['URL publik', s.publicBaseUrl || '(kosong)'],
     ['Folder media', s.mediaDir],
     ['Folder data', s.dataDir],
-    ['Token Buffer A', s.bufferA ? 'terisi' : 'belum diisi'],
-    ['Token Buffer B', s.bufferB ? 'terisi' : 'belum diisi'],
+    ['Akun Buffer', akun.length ? `${akun.length} akun · ${akun.join(', ')}` : 'belum diisi'],
     ['AI (Hermes)', s.hermes ? `terisi · model "${s.hermesModel}"` : 'belum diisi']
   ];
   for (const [label, nilai] of baris) {
@@ -909,6 +949,12 @@ function panelServer() {
     row.append(v);
     panel.append(row);
   }
+
+  panel.append(el('p', 'note',
+    'Menambah akun Buffer: isi variabel baru BUFFER_TOKEN_C (lalu D, E, …) di Coolify ' +
+    'dan deploy ulang. Paket gratis Buffer memberi 3 channel per akun.'));
+
+  panel.append(kuotaPerAkun());
 
   const aksi = el('div', 'row');
   aksi.style.marginTop = 'var(--s4)';
@@ -938,6 +984,43 @@ function panelServer() {
 }
 
 // ================= komponen kecil =================
+
+/**
+ * Kuota tiap akun Buffer.
+ *
+ * Batas 250 request/hari milik Buffer berlaku PER token, bukan gabungan. Yang
+ * menghentikan pengirimanmu selalu satu akun yang duluan mentok — jadi angkanya
+ * perlu dilihat per akun, bukan cuma totalnya.
+ */
+function kuotaPerAkun() {
+  const kotak = el('div', 'field');
+  kotak.style.marginTop = 'var(--s4)';
+
+  const daftar = data.usage?.perAkun || [];
+  if (daftar.length < 2) return kotak;   // satu akun: batang di sidebar sudah cukup
+
+  kotak.append(el('label', 'lbl', 'Kuota API hari ini, per akun'));
+
+  for (const a of daftar) {
+    const persen = a.dayLimit ? Math.min(100, (a.dayCount / a.dayLimit) * 100) : 0;
+
+    const row = el('div', 'mrow');
+    row.append(el('span', 'mlabel', `akun ${a.akun}`));
+
+    const nilai = el('span', 'srv-value tnum');
+    nilai.textContent = `${a.dayCount} / ${a.dayLimit}`;
+    if (persen > 90) nilai.classList.add('bad-text');
+    else if (persen > 70) nilai.classList.add('warn-text');
+    row.append(nilai);
+
+    kotak.append(row);
+  }
+
+  kotak.append(el('p', 'note',
+    'Angka di batang kiri bawah mengikuti akun yang paling terpakai — itu yang duluan ' +
+    'menolak pengiriman.'));
+  return kotak;
+}
 
 /**
  * Kolom teks yang menyimpan sendiri. Sengaja disimpan saat FOKUSNYA LEPAS,
