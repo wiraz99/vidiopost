@@ -90,11 +90,30 @@ router.get('/api/diagnostics', asyncHandler(async (req, res) => {
       'Token wajib punya scope posts:write.'));
   } else {
     try {
-      const { channels, source } = await buffer.discoverChannels();
+      const { channels, source, errors: errAkun = [] } = await buffer.discoverChannels();
       const perAkun = channels.reduce((acc, c) => {
         acc[c.account] = (acc[c.account] || 0) + 1;
         return acc;
       }, {});
+
+      // Satu akun gagal sementara yang lain berhasil TIDAK membuat
+      // discoverChannels melempar — channelnya cuma hilang diam-diam. Itu yang
+      // bikin "sudah tambah token tapi tidak muncul" jadi teka-teki.
+      if (errAkun.length) {
+        checks.push(bad('Akun Buffer gagal dibaca', errAkun.join(' · '),
+          'Biasanya token salah ketik, kedaluwarsa, atau belum punya scope posts:write. ' +
+          'Perbaiki di Coolify lalu deploy ulang.'));
+      }
+
+      const kosong = akunBuffer.filter(
+        (a) => !perAkun[a] && !errAkun.some((e) => e.startsWith(`akun ${a}:`))
+      );
+      if (kosong.length) {
+        checks.push(warn('Akun Buffer tanpa channel',
+          `Token akun ${kosong.join(', ')} diterima Buffer, tapi akun itu belum punya channel satu pun.`,
+          'Pastikan channelnya disambungkan di akun Buffer yang tokennya dipasang di sini, ' +
+          'lalu tekan "Muat ulang channel" di Pengaturan.'));
+      }
       // Channel yang disambungkan ulang di Buffer dapat ID baru, sehingga setelan
       // dan jadwal lama menunjuk channel yang sudah tidak ada. Tanpa pemeriksaan
       // ini, gejalanya cuma "board tidak terbaca" tanpa sebab yang jelas.

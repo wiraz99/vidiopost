@@ -105,6 +105,62 @@ test('catatan dari hari sebelumnya direset', () => {
   assert.strictEqual(per.A, 0);
 });
 
+/**
+ * Cache channel bertahan 1 jam DAN tersimpan di volume permanen, jadi deploy
+ * ulang tidak membersihkannya. Tanpa pemeriksaan ini, menambahkan
+ * BUFFER_TOKEN_C lalu redeploy tidak menghasilkan apa-apa sampai satu jam
+ * berlalu — dan tidak ada satu pun petunjuk di layar kenapa.
+ */
+const seedCache = (akun) => store.write('channels-cache', {
+  fetchedAt: new Date().toISOString(),
+  akun,
+  channels: akun.flatMap((a) => [{ id: `ch_${a}`, platform: 'tiktok', label: `TT ${a}`, account: a }])
+});
+
+test('cache dipakai selama daftar akunnya masih sama', async () => {
+  bersihkan();
+  seedCache(['A', 'B', 'C']);
+
+  const hasil = await buffer.discoverChannels();
+  assert.strictEqual(hasil.source, 'cache');
+  assert.strictEqual(hasil.channels.length, 3);
+});
+
+test('token BARU membuat cache dilewati, tanpa menunggu TTL', async () => {
+  bersihkan();
+  // Cache dibuat waktu baru ada akun A dan B; sekarang environment punya C.
+  seedCache(['A', 'B']);
+
+  // Endpoint diarahkan ke alamat mati, jadi kalau cache benar-benar DILEWATI
+  // fungsinya akan gagal mengambil dari API — dan itulah buktinya. Kalau cache
+  // masih dipakai, dia akan mengembalikan jawaban dengan tenang.
+  await assert.rejects(
+    () => buffer.discoverChannels(),
+    (err) => {
+      assert.strictEqual(err.code, 'NO_CHANNELS');
+      return true;
+    },
+    'cache seharusnya dilewati begitu ada akun baru di environment'
+  );
+});
+
+test('cache lama tanpa catatan akun tetap dikenali dari channelnya', async () => {
+  bersihkan();
+  // Bentuk cache sebelum perubahan ini: tidak punya field `akun` sama sekali.
+  store.write('channels-cache', {
+    fetchedAt: new Date().toISOString(),
+    channels: [
+      { id: 'ch_a', platform: 'tiktok', label: 'TT A', account: 'A' },
+      { id: 'ch_b', platform: 'tiktok', label: 'TT B', account: 'B' },
+      { id: 'ch_c', platform: 'tiktok', label: 'TT C', account: 'C' }
+    ]
+  });
+
+  // Ketiga akun sudah terwakili, jadi tidak ada yang baru — cache tetap dipakai.
+  const hasil = await buffer.discoverChannels();
+  assert.strictEqual(hasil.source, 'cache');
+});
+
 test('akun yang kuotanya habis tidak memblokir akun lain', async () => {
   bersihkan();
   pakai('A', 245);   // di atas 250 - margin 10

@@ -25,15 +25,29 @@ router.get('/api/settings', asyncHandler(async (req, res) => {
 
   let channels = [];
   let channelProblem = null;
+  let channelErrors = [];
   try {
     // ?refresh=1 memaksa daftar channel diambil ulang dari Buffer. Ini satu-satunya
     // jalan keluar kalau sebuah channel disambungkan ulang dan ID-nya berubah:
     // cachenya bertahan 1 jam DAN ikut tersimpan di volume permanen, jadi
     // deploy ulang pun tidak membersihkannya.
-    ({ channels } = await buffer.discoverChannels({ force: req.query.refresh === '1' }));
+    //
+    // `errors` WAJIB ikut diambil. Kalau satu akun gagal sementara yang lain
+    // berhasil, discoverChannels tidak melempar — dia mengembalikan channel
+    // yang berhasil saja. Dulu `errors` dibuang di sini, jadi token yang salah
+    // atau kedaluwarsa membuat channelnya hilang tanpa satu pun keterangan.
+    ({ channels, errors: channelErrors = [] } = await buffer.discoverChannels({
+      force: req.query.refresh === '1'
+    }));
   } catch (err) {
     channelProblem = err.message;
   }
+
+  // Akun yang tokennya terbaca tapi tidak menghasilkan channel apa pun. Ini
+  // membedakan "token bermasalah" dari "channelnya tersambung di akun Buffer
+  // yang lain" — dua hal yang tindakan perbaikannya berbeda jauh.
+  const punyaChannel = new Set(channels.map((c) => c.account));
+  const akunKosong = buffer.daftarAkun().filter((a) => !punyaChannel.has(a));
 
   const tersimpanChannel = settings.readChannelsRaw();
 
@@ -56,6 +70,8 @@ router.get('/api/settings', asyncHandler(async (req, res) => {
     groups: groups.daftar(),
     bawaanGrup: groups.bawaanId(),
     channelProblem,
+    channelErrors,
+    akunKosong,
     pilihan: {
       postTypes: settings.PLATFORM_POST_TYPES,
       youtubePrivacy: settings.YOUTUBE_PRIVACY,

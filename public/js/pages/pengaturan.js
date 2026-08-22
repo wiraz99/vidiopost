@@ -496,6 +496,8 @@ function panelChannel() {
     panel.append(el('p', 'note', 'Daftar channel terakhir diambil ' + umur + ' menit lalu.'));
   }
 
+  panel.append(kartuAkunBermasalah());
+
   for (const y of data.yatim || []) panel.append(kartuYatim(y));
 
   if (data.channelProblem) {
@@ -510,6 +512,51 @@ function panelChannel() {
 
   for (const channel of data.channels) panel.append(kartuChannel(channel));
   return panel;
+}
+
+/**
+ * Akun Buffer yang tokennya terbaca tapi tidak menghasilkan channel apa pun.
+ *
+ * Kalau satu akun gagal sementara yang lain berhasil, aplikasi tetap jalan
+ * dengan channel yang berhasil saja — dan dulu itu berarti akun bermasalah
+ * hilang tanpa bekas. Menambahkan token lalu tidak melihat apa-apa jadi teka-teki
+ * tanpa petunjuk. Sekarang keadaannya dinyatakan terus terang di sini.
+ */
+function kartuAkunBermasalah() {
+  const kotak = el('div');
+  const errors = data.channelErrors || [];
+  const kosong = data.akunKosong || [];
+  if (!errors.length && !kosong.length) return kotak;
+
+  // Buffer menolak tokennya — ini pasti masalah token, bukan masalah channel.
+  if (errors.length) {
+    const box = el('div', 'alert alert-bad');
+    const isi = el('div', 'grow');
+    isi.append(el('b', null, 'Ada akun Buffer yang gagal dibaca'));
+    for (const e of errors) isi.append(el('p', 'note', e));
+    isi.append(el('p', 'note',
+      'Biasanya tokennya salah ketik, sudah kedaluwarsa, atau belum punya scope posts:write. ' +
+      'Perbaiki nilainya di Coolify lalu deploy ulang.'));
+    box.append(isi);
+    kotak.append(box);
+  }
+
+  // Token diterima Buffer, tapi akunnya memang belum punya channel.
+  const tanpaError = kosong.filter((a) => !errors.some((e) => e.startsWith(`akun ${a}:`)));
+  if (tanpaError.length) {
+    const box = el('div', 'alert alert-warn');
+    const isi = el('div', 'grow');
+    isi.append(html('div', null,
+      `Token <b>akun ${tanpaError.join(', ')}</b> terbaca dan diterima Buffer, ` +
+      'tapi akun itu belum punya channel satu pun.'));
+    isi.append(el('p', 'note',
+      'Pastikan channelnya disambungkan di akun Buffer yang tokennya kamu pasang di sini — ' +
+      'bukan di akun Buffer yang lain. Sesudah menyambungkan, tekan "Muat ulang channel" di atas.'));
+    box.append(isi);
+    kotak.append(box);
+  }
+
+  return kotak;
 }
 
 /**
