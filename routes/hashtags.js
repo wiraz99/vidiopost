@@ -2,6 +2,8 @@
 const express = require('express');
 const store = require('../lib/store');
 const ai = require('../lib/ai');
+const groups = require('../lib/groups');
+const { saring, milikGrup } = require('../lib/group-scope');
 const { asyncHandler, HttpError } = require('../lib/http');
 
 const router = express.Router();
@@ -42,15 +44,28 @@ function normalizeTags(input) {
   return out;
 }
 
-router.get('/api/hashtags', (req, res) => res.json({ sets: readSets() }));
+router.get('/api/hashtags', (req, res) => {
+  const grup = groups.resolusi(req.query.grup);
+  const sets = readSets();
+  res.json({
+    groupId: grup.id,
+    grupTidakDikenal: grup.tidakDikenal,
+    sets: grup.semua ? sets : saring(sets, grup.id, groups.bawaanId())
+  });
+});
 
 router.post('/api/hashtags', asyncHandler(async (req, res) => {
-  const { name, tags, platforms, isDefault } = req.body || {};
+  const { name, tags, platforms, isDefault, groupId, semuaGrup } = req.body || {};
   if (!name?.trim()) throw new HttpError('Nama set wajib diisi', 400);
+  if (groupId && !groups.cari(groupId)) throw new HttpError(`Grup "${groupId}" tidak ada.`, 400);
 
   const set = {
     id: store.uid('hs'),
     name: name.trim(),
+    groupId: groupId || groups.bawaanId(),
+    // Set yang menandai dirinya berlaku umum ikut di semua grup — dipakai untuk
+    // hashtag netral seperti #UMKM yang memang bukan milik satu brand.
+    semuaGrup: semuaGrup === true,
     tags: normalizeTags(tags),
     platforms: Array.isArray(platforms) ? platforms : [],
     isDefault: !!isDefault,
@@ -67,7 +82,12 @@ router.patch('/api/hashtags/:id', asyncHandler(async (req, res) => {
   const set = sets.find((s) => s.id === req.params.id);
   if (!set) throw new HttpError('Set tidak ditemukan', 404);
 
-  const { name, tags, platforms, isDefault } = req.body || {};
+  const { name, tags, platforms, isDefault, groupId, semuaGrup } = req.body || {};
+  if (groupId !== undefined) {
+    if (!groups.cari(groupId)) throw new HttpError(`Grup "${groupId}" tidak ada.`, 400);
+    set.groupId = groupId;
+  }
+  if (semuaGrup !== undefined) set.semuaGrup = semuaGrup === true;
   if (name !== undefined) set.name = String(name).trim() || set.name;
   if (tags !== undefined) set.tags = normalizeTags(tags);
   if (platforms !== undefined) set.platforms = Array.isArray(platforms) ? platforms : [];
@@ -88,19 +108,31 @@ router.delete('/api/hashtags/:id', asyncHandler(async (req, res) => {
 
 /** Minta AI mengusulkan hashtag. Hasilnya belum disimpan — user yang memutuskan. */
 router.post('/api/hashtags/suggest', asyncHandler(async (req, res) => {
-  const { brief, platform, count } = req.body || {};
+  const { brief, platform, count, groupId } = req.body || {};
   if (!brief?.trim()) throw new HttpError('Isi brief dulu supaya AI punya konteks', 400);
-  const tags = await ai.suggestHashtags({ brief: brief.trim(), platform, count });
+  const tags = await ai.suggestHashtags({
+    brief: brief.trim(), platform, count, ...groups.brandUntuk(groupId)
+  });
   res.json({ tags });
 }));
 
 /**
  * Gabungan hashtag dari beberapa set untuk satu platform.
  * Dipakai lib/plan saat menyusun teks post.
+ *
+ * `groupId` wajib diperhatikan pada jalur "tidak memilih set apa pun": tanpa
+ * itu, SEMUA set bertanda default ikut — termasuk milik brand lain, sehingga
+ * post brand A membawa hashtag brand B. Kebocoran ini tidak kelihatan di layar
+ * mana pun sampai post-nya tayang.
  */
-function tagsFor(setIds, platform) {
+function tagsFor(setIds, platform, groupId = null) {
   const sets = readSets();
-  const chosen = setIds?.length ? sets.filter((s) => setIds.includes(s.id)) : sets.filter((s) => s.isDefault);
+  const bawaanId = groups.bawaanId();
+  const sesuaiGrup = (s) => !groupId || milikGrup(s, groupId, bawaanId);
+
+  const chosen = setIds?.length
+    ? sets.filter((s) => setIds.includes(s.id))
+    : sets.filter((s) => s.isDefault && sesuaiGrup(s));
 
   const seen = new Set();
   const out = [];

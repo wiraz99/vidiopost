@@ -11,6 +11,7 @@ import {
   icon, iconSvg, button, iconButton, videoThumb, platformDot
 } from '../utils.js';
 import { metaFor } from '../config.js';
+import { semua as semuaGrup, idAktif, namaAktif } from '../grup.js';
 import { diagnosticsPanel } from '../components/diagnostics.js';
 
 let videos = [];
@@ -40,8 +41,11 @@ export async function render(view) {
   const listPanel = html('section', 'panel', `
     <div class="panel-head">
       <div>
-        <div class="panel-title">Stok video</div>
-        <p class="muted">Urutan menentukan rotasi jadwal — yang paling atas jadi V1.</p>
+        <div class="panel-title">Stok video — ${escapeHtml(namaAktif())}</div>
+        <p class="muted">
+          Hanya video grup ini. Video yang diupload di sini otomatis jadi milik grup ini.
+          Urutan menentukan rotasi jadwal — yang paling atas jadi V1.
+        </p>
       </div>
       <span class="pill-count" id="stokCount">0</span>
     </div>
@@ -359,6 +363,39 @@ function buildRow(video, index) {
   }
   linkField.append(linkHint);
   detail.append(linkField);
+
+  // --- grup ---
+  // Video yang salah grup tidak akan pernah bisa dijadwalkan ke channel yang
+  // dimaksud, jadi pemindahnya ditaruh dekat — bukan di halaman lain.
+  const grupList = semuaGrup();
+  if (grupList.length > 1) {
+    const grupField = el('div', 'field');
+    grupField.style.marginTop = 'var(--s4)';
+    grupField.append(el('label', 'lbl', 'Grup pemilik video ini'));
+
+    const grupSelect = el('select');
+    for (const g of grupList) {
+      const opt = el('option', null, g.name);
+      opt.value = g.id;
+      grupSelect.append(opt);
+    }
+    grupSelect.value = video.groupId || idAktif();
+
+    grupSelect.onchange = async () => {
+      const tujuan = grupList.find((g) => g.id === grupSelect.value);
+      await persist({ groupId: grupSelect.value });
+      // Sesudah pindah, video ini bukan milik grup yang sedang dilihat lagi —
+      // jadi memang harus hilang dari daftar. Dikatakan terus terang supaya
+      // tidak terasa seperti videonya terhapus.
+      if (grupSelect.value !== idAktif()) {
+        toast(`Video dipindah ke grup ${tujuan?.name || grupSelect.value}.`, 'ok');
+        await reload();
+      }
+    };
+
+    grupField.append(grupSelect);
+    detail.append(grupField);
+  }
 
   // tombol simpan eksplisit
   const saveRow = el('div', 'row');

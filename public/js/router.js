@@ -4,6 +4,7 @@
  */
 import { NAV, NAV_SECONDARY } from './config.js';
 import { el, qsa, icon } from './utils.js';
+import { namaAktif } from './grup.js';
 
 const routes = {
   '/stok':        () => import('./pages/stok.js'),
@@ -61,7 +62,8 @@ function markActive(path) {
   const item = ALL_NAV.find((n) => n.path === active);
   const title = item?.full || item?.label || 'Video Post';
   document.getElementById('pageTitle').textContent = title;
-  document.title = `${title} — Arachynana`;
+  // Nama grup, bukan nama brand yang dulu ditulis mati di sini.
+  document.title = `${title} — ${namaAktif()}`;
 }
 
 // Yang dibandingkan adalah SELURUH hash, bukan path saja.

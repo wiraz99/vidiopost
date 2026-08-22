@@ -76,6 +76,7 @@ app.use((req, res, next) => {
 
 app.use(express.static(path.join(__dirname, 'public')));
 
+app.use(require('./routes/groups'));    // /api/groups
 app.use(require('./routes/videos'));    // /api/upload, /api/videos, /api/caption
 app.use(require('./routes/channels'));  // /api/channels, /api/queue, /api/usage
 app.use(require('./routes/hashtags'));  // /api/hashtags

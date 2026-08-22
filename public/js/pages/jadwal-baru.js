@@ -17,9 +17,11 @@ import {
   tomorrowISO, platformDot, button, setPageTitle
 } from '../utils.js';
 import { QUEUE_LIMIT, metaFor } from '../config.js';
+import { namaAktif, idAktif } from '../grup.js';
 
 let videos = [];
 let channels = [];
+let tanpaGrup = [];
 let hashtagSets = [];
 let queue = { counts: {}, limit: QUEUE_LIMIT };
 let view = null;
@@ -39,6 +41,7 @@ export async function render(container) {
   videos = videoRes.status === 'fulfilled' ? videoRes.value.videos : [];
   const channelData = channelRes.status === 'fulfilled' ? channelRes.value : { channels: [] };
   channels = channelData.channels || [];
+  tanpaGrup = channelData.tanpaGrup || [];
   hashtagSets = hashtagRes.status === 'fulfilled' ? hashtagRes.value.sets : [];
 
   try {
@@ -58,18 +61,28 @@ function renderBuilder(channelData) {
     <div>
       <a class="backlink" href="#/jadwal">Jadwal</a>
       <h2 class="page-title">Jadwal baru</h2>
-      <p class="page-sub">Tiap video digilir ke semua channel di hari yang berbeda-beda.</p>
+      <p class="page-sub">
+        Grup <b>${escapeHtml(namaAktif())}</b> — hanya video dan channel grup ini yang ikut.
+        Tiap video digilir ke semua channel di hari yang berbeda-beda.
+      </p>
     </div>
   `);
   wrap.append(head);
 
   if (!channels.length) {
+    // Bedakan "token bermasalah" dari "grup ini memang belum punya channel" —
+    // dua keadaan itu butuh tindakan yang sama sekali berbeda.
+    const adaDiGrupLain = (channelData.grupLain || 0) > 0 || tanpaGrup.length > 0;
     wrap.append(html('div', 'alert alert-bad', `
-      <b>Belum ada channel.</b>
+      <b>Grup ${escapeHtml(namaAktif())} belum punya channel.</b>
       <div style="margin-top:5px">${escapeHtml(
-        channelData.problem || 'Isi BUFFER_TOKEN_A / BUFFER_TOKEN_B di .env, lalu muat ulang.'
+        channelData.problem ||
+        (adaDiGrupLain
+          ? 'Channelnya ada, tapi belum ditetapkan ke grup ini. Buka Pengaturan untuk menetapkannya.'
+          : 'Isi BUFFER_TOKEN_A / BUFFER_TOKEN_B di .env, lalu muat ulang.')
       )}</div>
     `));
+    if (tanpaGrup.length) wrap.append(panelTanpaGrup());
     view.append(wrap);
     return;
   }
@@ -101,8 +114,8 @@ function videoPanel(daftar) {
       <div>
         <div class="panel-title">Video yang ikut</div>
         <p class="hint">
-          Urutannya mengikuti halaman Stok. Video yang pernah dipakai tetap bisa dipilih lagi —
-          berguna kalau satu platform gagal dan perlu dijadwalkan ulang sendirian.
+          Hanya video grup ini. Urutannya mengikuti halaman Stok. Video yang pernah dipakai tetap
+          bisa dipilih lagi — berguna kalau satu platform gagal dan perlu dijadwalkan ulang sendirian.
         </p>
       </div>
     </div>
@@ -211,6 +224,7 @@ function channelPanel() {
     try {
       const segar = await api.getChannelsDetail(true);
       channels = segar.channels || [];
+      tanpaGrup = segar.tanpaGrup || [];
       view.innerHTML = '';
       renderBuilder(segar);
       toast('Daftar channel diambil ulang dari Buffer.', 'ok');
@@ -258,7 +272,62 @@ function channelPanel() {
     if (channel.platform === 'pinterest') pick.append(buildBoardPicker(channel));
   }
 
+  if (tanpaGrup.length) panel.append(panelTanpaGrup());
+
   return panel;
+}
+
+/**
+ * Channel yang belum ditetapkan grupnya.
+ *
+ * Channel seperti ini tidak masuk grup mana pun — itu disengaja, supaya channel
+ * brand baru tidak diam-diam ikut terkirimi konten brand lama. Tapi kalau tidak
+ * ditampilkan di sini, dia tidak muncul di layar mana pun dan orangnya tidak
+ * pernah tahu harus menetapkannya. Sengaja TIDAK tercentang.
+ */
+function panelTanpaGrup() {
+  const box = el('div', 'alert alert-warn');
+  box.style.marginTop = 'var(--s3)';
+
+  const isi = el('div', 'grow');
+  isi.append(el('div', null,
+    `${tanpaGrup.length} channel belum punya grup, jadi belum bisa dipakai menjadwalkan apa pun:`));
+
+  const daftar = el('div', 'vlist');
+  daftar.style.marginTop = '8px';
+
+  for (const channel of tanpaGrup) {
+    const baris = el('div', 'vrow');
+    baris.style.gridTemplateColumns = 'auto 1fr auto';
+
+    const badan = el('div', 'vbody');
+    badan.append(el('div', 'vtitle truncate', channel.label));
+    badan.append(el('div', 'vmeta', `${channel.platform} · akun ${channel.account}`));
+
+    const tombol = button('btn btn-ghost btn-sm', 'check', `Masukkan ke ${namaAktif()}`);
+    tombol.onclick = async (e) => {
+      const done = busy(e.currentTarget, 'Menetapkan…');
+      try {
+        await api.assignChannels(idAktif(), [channel.id]);
+        toast(`${channel.label} masuk grup ${namaAktif()}.`, 'ok');
+        const segar = await api.getChannelsDetail(true);
+        channels = segar.channels || [];
+        tanpaGrup = segar.tanpaGrup || [];
+        view.innerHTML = '';
+        renderBuilder(segar);
+      } catch (err) {
+        toast('Gagal: ' + err.message, 'bad');
+        done();
+      }
+    };
+
+    baris.append(platformDot(channel.platform), badan, tombol);
+    daftar.append(baris);
+  }
+
+  isi.append(daftar);
+  box.append(isi);
+  return box;
 }
 
 /**

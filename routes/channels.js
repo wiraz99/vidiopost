@@ -8,11 +8,33 @@ const express = require('express');
 const store = require('../lib/store');
 const buffer = require('../lib/buffer');
 const appSettings = require('../lib/settings');
+const groups = require('../lib/groups');
 const { QUEUE_LIMIT } = require('../lib/rotation');
 const { cariPengganti, alihkanItem } = require('../lib/channel-map');
+const { saringChannel, channelTanpaGrup } = require('../lib/group-scope');
 const { asyncHandler, HttpError } = require('../lib/http');
 
 const router = express.Router();
+
+/**
+ * Sempitkan daftar channel ke grup yang diminta, dan lampirkan grup tiap
+ * channel supaya frontend bisa menandainya tanpa panggilan kedua.
+ *
+ * Channel yang belum punya grup TIDAK ikut — lihat lib/group-scope.js. Dia
+ * dilaporkan terpisah sebagai `tanpaGrup` supaya tetap terlihat dan bisa
+ * ditetapkan, bukan menghilang diam-diam.
+ */
+function untukGrup(channels, raw) {
+  const grup = groups.resolusi(raw);
+  const setelan = groups.setelanChannel();
+  const lampiri = (c) => ({ ...c, groupId: setelan[c.id]?.groupId || '' });
+
+  return {
+    grup,
+    daftar: (grup.semua ? channels : saringChannel(channels, grup.id, setelan)).map(lampiri),
+    tanpaGrup: grup.semua ? [] : channelTanpaGrup(channels, setelan).map(lampiri)
+  };
+}
 
 // Kontrak lama: mengembalikan ARRAY channel apa adanya.
 // Kalau channel belum bisa dibaca, balas array kosong (bukan 500) supaya
@@ -20,7 +42,7 @@ const router = express.Router();
 router.get('/api/channels', asyncHandler(async (req, res) => {
   try {
     const { channels } = await buffer.discoverChannels({ force: req.query.refresh === '1' });
-    res.json(channels);
+    res.json(untukGrup(channels, req.query.grup).daftar);
   } catch {
     res.json([]);
   }
@@ -31,7 +53,18 @@ router.get('/api/channels', asyncHandler(async (req, res) => {
 router.get('/api/channels/detail', asyncHandler(async (req, res) => {
   try {
     const result = await buffer.discoverChannels({ force: req.query.refresh === '1' });
-    res.json({ ...result, usage: buffer.usageSnapshot() });
+    const { grup, daftar, tanpaGrup } = untukGrup(result.channels, req.query.grup);
+    res.json({
+      ...result,
+      channels: daftar,
+      tanpaGrup,
+      groupId: grup.id,
+      grupTidakDikenal: grup.tidakDikenal,
+      // Berapa yang disembunyikan karena milik grup lain — supaya "channelnya
+      // kok cuma dua?" punya jawaban di layar, bukan jadi teka-teki.
+      grupLain: result.channels.length - daftar.length - tanpaGrup.length,
+      usage: buffer.usageSnapshot()
+    });
   } catch (err) {
     res.json({
       channels: [],
@@ -48,8 +81,9 @@ router.get('/api/queue', asyncHandler(async (req, res) => {
   const { channels } = await buffer.discoverChannels();
   const { counts, errors, fetchedAt, cached } = await buffer.scheduledCounts({ force: req.query.refresh === '1' });
 
+  const { daftar, tanpaGrup } = untukGrup(channels, req.query.grup);
   const full = {};
-  for (const c of channels) full[c.id] = counts[c.id] || 0;
+  for (const c of [...daftar, ...tanpaGrup]) full[c.id] = counts[c.id] || 0;
 
   res.json({ limit: QUEUE_LIMIT, counts: full, errors, fetchedAt, cached, usage: buffer.usageSnapshot() });
 }));

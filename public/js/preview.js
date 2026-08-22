@@ -1,4 +1,5 @@
-import { BRAND_NAME, metaFor } from './config.js';
+import { metaFor } from './config.js';
+import { namaAktif } from './grup.js';
 import { escapeHtml } from './utils.js';
 
 // Sorot hashtag & mention supaya panjang teks + posisi hashtag gampang dicek mata.
@@ -14,6 +15,10 @@ const avatar = (platform) => {
   return `<span class="pv-avatar" style="background:${m.color}">${m.icon}</span>`;
 };
 
+// Pratinjau memakai nama grup yang sedang aktif — kalau memakai nama brand
+// yang ditulis mati, pratinjau brand kedua menampilkan nama brand pertama.
+const merek = () => namaAktif();
+
 const videoBox = (label = 'VIDEO') => `<div class="pv-media">${label}</div>`;
 
 // Setiap platform punya "bentuk" sendiri — sengaja tidak pixel-perfect,
@@ -21,17 +26,17 @@ const videoBox = (label = 'VIDEO') => `<div class="pv-media">${label}</div>`;
 const renderers = {
   instagram: ({ caption }) => `
     <div class="pv pv-instagram">
-      <div class="pv-head">${avatar('instagram')}<b>${BRAND_NAME.toLowerCase()}</b></div>
+      <div class="pv-head">${avatar('instagram')}<b>${merek().toLowerCase()}</b></div>
       ${videoBox('REELS 9:16')}
       <div class="pv-actions">♥ &nbsp; 💬 &nbsp; ➤</div>
-      <div class="pv-body"><b>${BRAND_NAME.toLowerCase()}</b> ${richText(caption)}</div>
+      <div class="pv-body"><b>${merek().toLowerCase()}</b> ${richText(caption)}</div>
     </div>`,
 
   tiktok: ({ caption }) => `
     <div class="pv pv-tiktok">
       ${videoBox('FULL SCREEN 9:16')}
       <div class="pv-overlay">
-        <div class="pv-head">${avatar('tiktok')}<b>@${BRAND_NAME.toLowerCase()}</b></div>
+        <div class="pv-head">${avatar('tiktok')}<b>@${merek().toLowerCase()}</b></div>
         <div class="pv-body pv-clamp">${richText(caption)}</div>
       </div>
     </div>`,
@@ -41,14 +46,14 @@ const renderers = {
       ${videoBox('THUMBNAIL 16:9')}
       <div class="pv-body">
         <div class="pv-title">${escapeHtml(title) || '<i class="pv-muted">(judul belum diisi)</i>'}</div>
-        <div class="pv-head">${avatar('youtube')}<span>${BRAND_NAME} · 1,2 rb x ditonton</span></div>
+        <div class="pv-head">${avatar('youtube')}<span>${merek()} · 1,2 rb x ditonton</span></div>
         <div class="pv-desc">${richText(caption)}</div>
       </div>
     </div>`,
 
   facebook: ({ caption }) => `
     <div class="pv pv-facebook">
-      <div class="pv-head">${avatar('facebook')}<div><b>${BRAND_NAME}</b><div class="pv-muted">Baru saja · 🌐</div></div></div>
+      <div class="pv-head">${avatar('facebook')}<div><b>${merek()}</b><div class="pv-muted">Baru saja · 🌐</div></div></div>
       <div class="pv-body">${richText(caption)}</div>
       ${videoBox('VIDEO')}
       <div class="pv-actions pv-fb-actions"><span>👍 Suka</span><span>💬 Komentar</span><span>↗ Bagikan</span></div>
@@ -59,7 +64,7 @@ const renderers = {
       <div class="pv-thread-row">
         ${avatar('threads')}
         <div class="pv-thread-col">
-          <div class="pv-head"><b>${BRAND_NAME.toLowerCase()}</b><span class="pv-muted">· 1m</span></div>
+          <div class="pv-head"><b>${merek().toLowerCase()}</b><span class="pv-muted">· 1m</span></div>
           <div class="pv-body">${richText(caption)}</div>
           ${videoBox('VIDEO')}
           <div class="pv-actions">♥ &nbsp; 💬 &nbsp; ⇄ &nbsp; ➤</div>
@@ -76,7 +81,7 @@ const renderers = {
         <div class="pv-link">${
           link ? `🔗 ${escapeHtml(link)}` : '<i class="pv-muted">(link tujuan belum diisi)</i>'
         }</div>
-        <div class="pv-head">${avatar('pinterest')}<span>${BRAND_NAME}</span></div>
+        <div class="pv-head">${avatar('pinterest')}<span>${merek()}</span></div>
       </div>
     </div>`
 };

@@ -2,6 +2,7 @@
 import * as api from '../api.js';
 import { el, html, toast, busy, escapeHtml, iconSvg, button, iconButton } from '../utils.js';
 import { PLATFORM_META } from '../config.js';
+import { namaAktif } from '../grup.js';
 
 const PLATFORMS = Object.keys(PLATFORM_META).filter((p) => p !== 'default');
 
@@ -12,8 +13,10 @@ export async function render(view) {
   const wrap = el('div', 'stack');
 
   wrap.append(html('section', 'panel', `
-    <div class="panel-title">Set hashtag</div>
+    <div class="panel-title">Set hashtag — ${escapeHtml(namaAktif())}</div>
     <p class="hint">
+      Set baru jadi milik grup ini; centang <b>semua grup</b> untuk hashtag netral yang dipakai
+      semua brand.
       Set yang ditandai <b>default</b> otomatis terpilih saat membuat jadwal.
       Kalau sebuah set dibatasi ke platform tertentu, hashtag-nya cuma ikut di platform itu.
       Pinterest &amp; YouTube memang tidak diberi hashtag.
@@ -69,6 +72,16 @@ function buildSetCard(set) {
   defaultCb.checked = !!set.isDefault;
   defaultChip.append(defaultCb, el('span', null, 'default'));
 
+  // Set brand seperti #SalePisangGranola milik satu grup saja. Yang netral
+  // (#UMKM, #KulinerIndonesia) bisa ditandai berlaku di semua grup.
+  const umumChip = el('label', `chip${set.semuaGrup ? ' on' : ''}`);
+  const umumCb = el('input');
+  umumCb.type = 'checkbox';
+  umumCb.checked = !!set.semuaGrup;
+  umumCb.onchange = () => umumChip.classList.toggle('on', umumCb.checked);
+  umumChip.append(umumCb, el('span', null, 'semua grup'));
+  umumChip.title = 'Kalau dicentang, set ini ikut dipakai di semua brand — bukan cuma grup ini.';
+
   const delBtn = iconButton('trash', 'Hapus set', 'icon-btn danger');
   delBtn.onclick = async () => {
     if (!confirm(`Hapus set "${set.name}"?`)) return;
@@ -82,7 +95,7 @@ function buildSetCard(set) {
     }
   };
 
-  actions.append(defaultChip, delBtn);
+  actions.append(defaultChip, umumChip, delBtn);
   head.append(nameInput, actions);
   card.append(head);
 
@@ -127,7 +140,8 @@ function buildSetCard(set) {
         name: nameInput.value,
         tags: tagArea.value,
         platforms: platformBoxes.filter((c) => c.checked).map((c) => c.dataset.platform),
-        isDefault: defaultCb.checked
+        isDefault: defaultCb.checked,
+        semuaGrup: umumCb.checked
       });
       Object.assign(set, updated);
       tagArea.value = updated.tags.join(' ');

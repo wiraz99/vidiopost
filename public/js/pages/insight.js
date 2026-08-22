@@ -15,6 +15,7 @@ import {
   escapeHtml, icon, button, setPageTitle
 } from '../utils.js';
 import { metaFor } from '../config.js';
+import { namaAktif } from '../grup.js';
 
 let data = null;
 let sortKey = null;
@@ -97,9 +98,11 @@ function headerPanel() {
   const head = el('div', 'page-head');
   const kiri = el('div');
   kiri.append(el('h2', 'page-title', 'Performa konten'));
+  // Angka grup lain sengaja tidak ikut: performa dua brand yang digabung tidak
+  // berarti apa-apa, dan diam-diam membuat kesimpulannya salah.
   kiri.append(el('p', 'page-sub', data.available
-    ? `${data.ringkas.totalPost} post terkirim · ${data.ringkas.berangka} sudah punya angka`
-    : 'Data dari Buffer'));
+    ? `Grup ${namaAktif()} · ${data.ringkas.totalPost} post terkirim · ${data.ringkas.berangka} sudah punya angka`
+    : `Grup ${namaAktif()} · data dari Buffer`));
   head.append(kiri);
 
   const refresh = button('btn btn-ghost btn-sm', 'refresh', 'Ambil data terbaru');

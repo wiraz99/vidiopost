@@ -1,4 +1,5 @@
 /** Pembungkus tipis semua endpoint server. Semua error dilempar sebagai Error biasa. */
+import { idAktif } from './grup.js';
 
 /**
  * Sesi habis di tengah jalan itu wajar (cookie kedaluwarsa, kata sandi
@@ -37,6 +38,41 @@ const post = send('POST');
 const patch = send('PATCH');
 const del = send('DELETE');
 
+/**
+ * Bangun URL yang SELALU membawa grup aktif.
+ *
+ * Penyaringan dikerjakan server, bukan di sini: satu aturan untuk semua
+ * pemanggil, dan pemanggil yang lupa menyaring tidak bisa membocorkan isi grup
+ * lain ke layar. Isi `params` yang kosong dibuang supaya URL-nya tetap bersih.
+ */
+function url(path, params = {}) {
+  const q = new URLSearchParams();
+  const grup = idAktif();
+  if (grup) q.set('grup', grup);
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== null && v !== '' && v !== false) q.set(k, v === true ? '1' : v);
+  }
+  const s = q.toString();
+  return s ? `${path}?${s}` : path;
+}
+
+/** Yang perlu melihat lintas grup (halaman Pengaturan) memakai ini. */
+const urlSemua = (path, params = {}) => {
+  const q = new URLSearchParams({ grup: 'semua' });
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== null && v !== '' && v !== false) q.set(k, v === true ? '1' : v);
+  }
+  return `${path}?${q}`;
+};
+
+// ---------- grup ----------
+export const listGroups = () => get('/api/groups');
+export const createGroup = (body) => post('/api/groups', body);
+export const updateGroup = (id, body) => patch(`/api/groups/${id}`, body);
+export const deleteGroup = (id) => del(`/api/groups/${id}`);
+export const assignChannels = (groupId, channelIds) =>
+  post(`/api/groups/${groupId}/channels`, { channelIds });
+
 // ---------- upload ----------
 /** /api/upload menerima satu file per request, jadi batch = beberapa request. */
 export function uploadVideo(file, onProgress) {
@@ -45,7 +81,8 @@ export function uploadVideo(file, onProgress) {
     fd.append('video', file);
 
     const xhr = new XMLHttpRequest();
-    xhr.open('POST', '/api/upload');
+    // Video langsung jadi milik grup yang sedang aktif — bukan grup bawaan.
+    xhr.open('POST', url('/api/upload'));
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable && onProgress) onProgress(e.loaded / e.total);
     };
@@ -70,16 +107,18 @@ export function uploadVideo(file, onProgress) {
 }
 
 // ---------- video ----------
-export const listVideos = (status) => get(`/api/videos${status ? `?status=${status}` : ''}`);
+export const listVideos = (status) => get(url('/api/videos', { status }));
 export const updateVideo = (id, patchBody) => patch(`/api/videos/${id}`, patchBody);
 export const deleteVideo = (id) => del(`/api/videos/${id}`);
 export const reorderVideos = (ids) => post('/api/videos/reorder', { ids });
 export const suggestTitle = (id, brief, count) => post(`/api/videos/${id}/suggest-title`, { brief, count });
 
 // ---------- channel & kuota ----------
-export const getChannels = () => get('/api/channels');
-export const getChannelsDetail = (refresh) => get(`/api/channels/detail${refresh ? '?refresh=1' : ''}`);
-export const getQueue = () => get('/api/queue');
+export const getChannels = () => get(url('/api/channels'));
+export const getChannelsDetail = (refresh) => get(url('/api/channels/detail', { refresh }));
+/** Semua channel lintas grup — hanya untuk halaman Pengaturan. */
+export const getChannelsAll = (refresh) => get(urlSemua('/api/channels/detail', { refresh }));
+export const getQueue = () => get(url('/api/queue'));
 export const getChannelBoards = (id, refresh) => get(`/api/channels/${id}/boards${refresh ? '?refresh=1' : ''}`);
 export const setChannelSettings = (id, body) => patch(`/api/channels/${id}/settings`, body);
 /** Balasan mentah Buffer untuk pembacaan board — dipakai kalau board tak terbaca. */
@@ -88,16 +127,19 @@ export const getUsage = () => get('/api/usage');
 export const getHealth = () => get('/api/health');
 
 // ---------- hashtag ----------
-export const listHashtags = () => get('/api/hashtags');
+export const listHashtags = () => get(url('/api/hashtags'));
 export const createHashtagSet = (body) => post('/api/hashtags', body);
 export const updateHashtagSet = (id, body) => patch(`/api/hashtags/${id}`, body);
 export const deleteHashtagSet = (id) => del(`/api/hashtags/${id}`);
-export const suggestHashtags = (brief, platform, count) => post('/api/hashtags/suggest', { brief, platform, count });
+export const suggestHashtags = (brief, platform, count) =>
+  post('/api/hashtags/suggest', { brief, platform, count, groupId: idAktif() });
 
 // ---------- jadwal ----------
-export const previewPlan = (body) => post('/api/plan/preview', body);
-export const createPlan = (body) => post('/api/plan', body);
-export const listPlans = () => get('/api/plan');
+// groupId ikut dikirim supaya server bisa menolak jadwal yang mencampur grup —
+// pemeriksaan itu tidak boleh bergantung pada tampilan saja.
+export const previewPlan = (body) => post('/api/plan/preview', { ...body, groupId: idAktif() });
+export const createPlan = (body) => post('/api/plan', { ...body, groupId: idAktif() });
+export const listPlans = () => get(url('/api/plan'));
 export const getPlan = (id) => get(`/api/plan/${id}`);
 export const deletePlan = (id) => del(`/api/plan/${id}`);
 /** `platforms` opsional: kalau diisi, hanya platform itu yang ditulis ulang. */
@@ -112,7 +154,7 @@ export const reschedulePlan = (planId, startDate) => post(`/api/plan/${planId}/r
 export const syncPlan = (planId) => post(`/api/plan/${planId}/sync`);
 
 // ---------- tautan ----------
-export const listLinks = () => get('/api/links');
+export const listLinks = () => get(url('/api/links'));
 export const createLink = (body) => post('/api/links', body);
 export const updateLink = (id, body) => patch(`/api/links/${id}`, body);
 export const deleteLink = (id) => del(`/api/links/${id}`);
@@ -135,5 +177,5 @@ export const changePassword = (body) => post('/api/auth/password', body);
 
 // ---------- riwayat & insight ----------
 export const getHistory = (limit = 100) => get(`/api/history?limit=${limit}`);
-export const getInsights = (refresh) => get(`/api/insights${refresh ? '?refresh=1' : ''}`);
+export const getInsights = (refresh) => get(url('/api/insights', { refresh }));
 export const getMetricSchema = (refresh) => get(`/api/insights/skema${refresh ? '?refresh=1' : ''}`);

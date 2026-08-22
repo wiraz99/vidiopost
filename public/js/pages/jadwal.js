@@ -10,7 +10,10 @@
  * kanan layar — jauh dari judul yang sedang dibaca.
  */
 import * as api from '../api.js';
-import { el, html, toast, formatDayLabel, formatRange, icon, iconButton, setPageTitle } from '../utils.js';
+import {
+  el, html, toast, escapeHtml, formatDayLabel, formatRange, icon, iconButton, setPageTitle
+} from '../utils.js';
+import { namaAktif } from '../grup.js';
 
 export async function render(container, params) {
   const planId = params?.get('id');
@@ -29,7 +32,10 @@ async function renderList(view) {
   const head = html('div', 'page-head', `
     <div>
       <h2 class="page-title">Jadwal tayang</h2>
-      <p class="page-sub">Tiap jadwal menyebar video ke semua channel secara bergiliran.</p>
+      <p class="page-sub">
+        Grup <b>${escapeHtml(namaAktif())}</b> — tiap jadwal menyebar video ke semua channel grup ini
+        secara bergiliran.
+      </p>
     </div>
   `);
   const newBtn = el('a', 'btn btn-primary');

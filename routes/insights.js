@@ -23,6 +23,8 @@
 const express = require('express');
 const store = require('../lib/store');
 const buffer = require('../lib/buffer');
+const groups = require('../lib/groups');
+const { saringChannel } = require('../lib/group-scope');
 const { asyncHandler } = require('../lib/http');
 
 const router = express.Router();
@@ -267,8 +269,16 @@ router.get('/api/insights', asyncHandler(async (req, res) => {
     }
   }
 
-  const rawPosts = cache?.posts || [];
-  const { channels } = await buffer.discoverChannels().catch(() => ({ channels: [] }));
+  const grup = groups.resolusi(req.query.grup);
+  const setelanCh = groups.setelanChannel();
+
+  const { channels: semuaChannel } = await buffer.discoverChannels().catch(() => ({ channels: [] }));
+  // Angka brand lain tidak boleh ikut terhitung di sini: gabungan performa dua
+  // brand tidak berarti apa-apa, dan diam-diam membuat kesimpulan jadi salah.
+  const channels = grup.semua ? semuaChannel : saringChannel(semuaChannel, grup.id, setelanCh);
+  const idGrupIni = new Set(channels.map((c) => c.id));
+
+  const rawPosts = (cache?.posts || []).filter((p) => grup.semua || idGrupIni.has(p.channelId));
 
   if (!rawPosts.length) {
     return res.json({
@@ -460,6 +470,8 @@ router.get('/api/insights', asyncHandler(async (req, res) => {
 
   res.json({
     available: true,
+    groupId: grup.id,
+    grupTidakDikenal: grup.tidakDikenal,
     // Angka dari jalur agregat ikut dihitung "ada" — kalau tidak, halaman
     // menutup diri padahal ada data yang bisa ditampilkan.
     punyaAngka: berangka.length > 0 || byPlatform.some((p) => p.agregat?.adaAngka),

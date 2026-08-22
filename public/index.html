@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <meta name="theme-color" content="#0f766e" />
-<title>Arachynana — Video Post</title>
+<title>Video Post</title>
 <link rel="stylesheet" href="/css/base.css" />
 <link rel="stylesheet" href="/css/components.css" />
 </head>
@@ -14,11 +14,15 @@
 
   <!-- ===== sidebar (desktop) ===== -->
   <aside class="sidebar">
+    <!-- Penanda brand sekaligus penukar grup: warna dan hurufnya mengikuti grup
+         yang sedang aktif, jadi "aku sedang di brand mana" terbaca sekilas. -->
     <div class="brand">
-      <span class="brand-mark">A</span>
+      <span class="brand-mark" id="grupMarkSide">A</span>
       <div class="brand-text">
         <strong>Video Post</strong>
-        <small>Arachynana</small>
+        <div class="grup-switch">
+          <select id="grupSidebar" aria-label="Grup yang sedang aktif"></select>
+        </div>
       </div>
     </div>
 
@@ -36,7 +40,12 @@
   <!-- ===== konten ===== -->
   <div class="main-wrap">
     <header class="topbar">
-      <span class="brand-mark sm">A</span>
+      <!-- Di HP sidebar tidak ada, jadi penukar grupnya di sini. Selectnya
+           menutupi seluruh kotak supaya gampang ditekan dengan jempol. -->
+      <div class="grup-switch grup-switch-mark" title="Grup yang sedang aktif">
+        <span class="brand-mark sm" id="grupMarkTop">A</span>
+        <select id="grupTopbar" aria-label="Grup yang sedang aktif"></select>
+      </div>
       <h1 id="pageTitle">Stok Video</h1>
       <!-- Pengaturan tidak ikut bottom-nav (tujuh tombol terlalu sempit di HP),
            jadi di layar kecil pintu masuknya di sini. -->

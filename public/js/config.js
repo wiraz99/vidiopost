@@ -27,7 +27,8 @@ export const PLATFORM_META = {
   default:   { name: 'Lainnya',   icon: '??', color: '#71717a', soft: '#f4f4f5', ink: '#52525b' }
 };
 
-export const BRAND_NAME = 'Arachynana';
+// Nama brand TIDAK lagi di sini — sekarang milik grup (lihat grup.js), supaya
+// satu deployment bisa melayani beberapa brand.
 
 // Batas antrian Buffer per channel (samakan dengan QUEUE_LIMIT di lib/rotation.js).
 export const QUEUE_LIMIT = 10;

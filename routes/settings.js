@@ -11,6 +11,7 @@ const settings = require('../lib/settings');
 const buffer = require('../lib/buffer');
 const media = require('../lib/media');
 const store = require('../lib/store');
+const groups = require('../lib/groups');
 const { asyncHandler } = require('../lib/http');
 
 const router = express.Router();
@@ -40,14 +41,20 @@ router.get('/api/settings', asyncHandler(async (req, res) => {
     umum,
     bawaan: settings.envDefaults(),
     tersimpan: settings.readGlobalRaw(),
+    // Halaman Pengaturan sengaja melihat SEMUA channel lintas grup — di sinilah
+    // channel ditetapkan grupnya, jadi menyaringnya per grup akan membuat
+    // channel yang belum bergrup mustahil diperbaiki.
     channels: channels.map((c) => ({
       id: c.id,
       label: c.label,
       platform: c.platform,
       account: c.account,
+      groupId: tersimpanChannel[c.id]?.groupId || '',
       efektif: settings.forChannel(c.id),
       tersimpan: tersimpanChannel[c.id] || {}
     })),
+    groups: groups.daftar(),
+    bawaanGrup: groups.bawaanId(),
     channelProblem,
     pilihan: {
       postTypes: settings.PLATFORM_POST_TYPES,

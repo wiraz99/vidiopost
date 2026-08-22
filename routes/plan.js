@@ -14,6 +14,8 @@ const ai = require('../lib/ai');
 const { buildRotation, zonedToUtc, addDays, QUEUE_LIMIT } = require('../lib/rotation');
 const { buildPost } = require('../lib/compose');
 const { alihkanItem } = require('../lib/channel-map');
+const groups = require('../lib/groups');
+const { saring, saringChannel, grupChannel, periksaCampuran } = require('../lib/group-scope');
 const appSettings = require('../lib/settings');
 const { tagsFor } = require('./hashtags');
 const { resolveLink } = require('./links');
@@ -65,13 +67,13 @@ async function channelHidup() {
  * Ini yang membuat "belum lengkap" ketahuan SEBELUM tombol Kirim ditekan,
  * bukan setelah Buffer menolak satu per satu.
  */
-function decorateItem(item, plan, videos, hidup = null, now = Date.now()) {
+function decorateItem(item, plan, videos, hidup = null, setelanChannel = null, now = Date.now()) {
   const video = videos.get(item.videoId);
   const { text, missing, warning } = buildPost({
     platform: item.platform,
     title: video?.title || '',
     caption: video?.captions?.[item.platform] || '',
-    hashtags: tagsFor(plan.hashtagSetIds, item.platform),
+    hashtags: tagsFor(plan.hashtagSetIds, item.platform, plan.groupId),
     link: resolveLink(video, item.platform),
     boardId: item.boardId || boardFor(item.channelId),
     settings: appSettings.forChannel(item.channelId)
@@ -80,6 +82,21 @@ function decorateItem(item, plan, videos, hidup = null, now = Date.now()) {
   const kurang = [];
   if (!video) kurang.push('videonya sudah dihapus dari stok');
   else if (!text.trim()) kurang.push(`caption ${item.platform} belum diisi`);
+
+  // Sebuah channel bisa dipindah ke grup lain SESUDAH jadwalnya dibuat. Kalau
+  // itu terjadi, item ini akan menayangkan konten brand lain di sana. Layar
+  // tidak bisa mencegahnya — jadwalnya sudah tersimpan — jadi ditandai di sini.
+  const grupJadwal = plan.groupId || groups.bawaanId();
+  const grupCh = setelanChannel ? grupChannel({ id: item.channelId }, setelanChannel) : grupJadwal;
+  const grupBeda = item.status !== 'sent' && !!grupCh && grupCh !== grupJadwal;
+  if (grupBeda) {
+    const nama = groups.petaNama();
+    kurang.push(
+      `channel "${item.channelLabel}" sekarang milik grup "${nama[grupCh] || grupCh}", ` +
+      `sedangkan jadwal ini milik grup "${nama[grupJadwal] || grupJadwal}". ` +
+      'Post ini akan tayang di brand yang salah.'
+    );
+  }
 
   // Hanya diperiksa kalau daftar channel benar-benar terbaca (lihat channelHidup).
   // Item yang SUDAH terkirim tidak ikut ditandai: id lamanya adalah catatan
@@ -107,6 +124,7 @@ function decorateItem(item, plan, videos, hidup = null, now = Date.now()) {
     ...item,
     isPast,
     channelMati,
+    grupBeda,
     missing: kurang,
     ready: !kurang.length && !isPast,
     state,
@@ -143,19 +161,38 @@ function summarize(items, plan) {
   };
 }
 
-/** Kumpulkan bahan rotasi dari body request. */
+/**
+ * Kumpulkan bahan rotasi dari body request.
+ *
+ * Ini juga tempat penjaga grup berdiri. Dua jalur harus dijaga terpisah:
+ *  - kalau id-nya TIDAK disebut, bahan bawaannya disempitkan ke grup itu, jadi
+ *    tidak mungkin ada isi brand lain yang ikut terbawa
+ *  - kalau id-nya disebut, pilihannya diperiksa apakah bercampur antar grup
+ */
 async function gather(body) {
   const { videoIds, channelIds, startDate, timezone, daysBetween, offsetStep, channelHours, days } = body || {};
+
+  const grup = groups.resolusi(body?.groupId);
+  const bawaanId = groups.bawaanId();
+  const setelanChannel = groups.setelanChannel();
 
   const allVideos = readVideos();
   const videos = Array.isArray(videoIds) && videoIds.length
     ? videoIds.map((id) => allVideos.find((v) => v.id === id)).filter(Boolean)
-    : allVideos.filter((v) => v.status === 'stock');
+    : saring(allVideos.filter((v) => v.status === 'stock'), grup.id, bawaanId);
 
   const { channels: allChannels } = await buffer.discoverChannels();
   const channels = Array.isArray(channelIds) && channelIds.length
     ? channelIds.map((id) => allChannels.find((c) => c.id === id)).filter(Boolean)
-    : allChannels;
+    : saringChannel(allChannels, grup.id, setelanChannel);
+
+  const campuran = periksaCampuran({
+    videos,
+    channels,
+    setelanChannel,
+    bawaanId,
+    namaGrup: groups.petaNama()
+  });
 
   // Antrian asli dipakai untuk memperingatkan batas 10/channel.
   let existingScheduled = {};
@@ -172,6 +209,8 @@ async function gather(body) {
     videos,
     channels,
     queueError,
+    grup,
+    campuran,
     options: {
       startDate: startDate || new Date().toISOString().slice(0, 10),
       timezone: timezone || appSettings.globalSettings().timezone,
@@ -188,9 +227,12 @@ async function gather(body) {
 
 // ---------- pratinjau ----------
 router.post('/api/plan/preview', asyncHandler(async (req, res) => {
-  const { videos, channels, options, queueError } = await gather(req.body);
+  const { videos, channels, options, queueError, grup, campuran } = await gather(req.body);
   const result = buildRotation({ videos, channels, ...options });
   if (queueError) result.warnings.push(`Tidak bisa membaca antrian Buffer: ${queueError}`);
+  // Pratinjau MEMPERINGATKAN, tidak menolak: user perlu melihat kenapa sebelum
+  // pilihannya ditolak saat menyimpan.
+  if (!campuran.ok) result.warnings.unshift(campuran.pesan);
 
   // Tandai tiap sel yang bahannya belum lengkap, supaya kekurangannya
   // kelihatan di tabel pratinjau — bukan baru ketahuan saat dikirim.
@@ -205,7 +247,7 @@ router.post('/api/plan/preview', asyncHandler(async (req, res) => {
         platform: row.platform,
         title: video?.title || '',
         caption: video?.captions?.[row.platform] || '',
-        hashtags: tagsFor(hashtagSetIds, row.platform),
+        hashtags: tagsFor(hashtagSetIds, row.platform, grup.id),
         link: resolveLink(video, row.platform),
         boardId: boardFor(row.channelId),
         settings: appSettings.forChannel(row.channelId)
@@ -219,17 +261,30 @@ router.post('/api/plan/preview', asyncHandler(async (req, res) => {
 
   const belumLengkap = result.matrix.reduce((n, r) => n + r.cells.filter((c) => c.missing.length).length, 0);
 
-  res.json({ ...result, belumLengkap, queueLimit: QUEUE_LIMIT, timezone: options.timezone });
+  res.json({
+    ...result,
+    belumLengkap,
+    queueLimit: QUEUE_LIMIT,
+    timezone: options.timezone,
+    groupId: grup.id,
+    campuran: campuran.ok ? null : campuran
+  });
 }));
 
 // ---------- simpan jadwal ----------
 router.post('/api/plan', asyncHandler(async (req, res) => {
-  const { videos, channels, options } = await gather(req.body);
+  const { videos, channels, options, grup, campuran } = await gather(req.body);
+
+  // Di sini TIDAK diperingatkan lagi, tapi ditolak. Sekali tersimpan, jadwal
+  // ini akan dikirim otomatis dan post yang salah brand tidak bisa ditarik.
+  if (!campuran.ok) throw new HttpError(campuran.pesan, 400);
+
   const { items, matrix, warnings } = buildRotation({ videos, channels, ...options });
   if (!items.length) throw new HttpError(warnings[0] || 'Jadwal kosong', 400);
 
   const plan = {
     id: store.uid('plan'),
+    groupId: grup.id,
     createdAt: new Date().toISOString(),
     startDate: options.startDate,
     timezone: options.timezone,
@@ -258,25 +313,33 @@ router.get('/api/plan', asyncHandler(async (req, res) => {
   // cukup lengkap supaya kartu di daftar bisa langsung menjawab
   // "sudah sejauh mana" dan "apa yang berikutnya tayang".
   const hidup = await channelHidup();
+  const setelanCh = groups.setelanChannel();
   const videos = videoMap();
-  const plans = readPlans().map((p) => {
-    const items = p.items.map((item) => decorateItem(item, p, videos, hidup));
+
+  const grup = groups.resolusi(req.query.grup);
+  const semuaPlan = readPlans();
+  const daftar = grup.semua ? semuaPlan : saring(semuaPlan, grup.id, groups.bawaanId());
+
+  const plans = daftar.map((p) => {
+    const items = p.items.map((item) => decorateItem(item, p, videos, hidup, setelanCh));
     return {
       id: p.id,
       createdAt: p.createdAt,
       timezone: p.timezone,
+      groupId: p.groupId || groups.bawaanId(),
       ...summarize(items, p),
       // nama lama tetap ada supaya pemanggil lama tidak pecah
       failed: items.filter((i) => i.status === 'error').length
     };
   });
-  res.json({ plans });
+  res.json({ plans, groupId: grup.id, grupTidakDikenal: grup.tidakDikenal });
 }));
 
 router.get('/api/plan/:id', asyncHandler(async (req, res) => {
   const { plan } = findPlan(req.params.id);
   const hidup = await channelHidup();
-  const items = plan.items.map((item) => decorateItem(item, plan, videoMap(), hidup));
+  const setelanCh = groups.setelanChannel();
+  const items = plan.items.map((item) => decorateItem(item, plan, videoMap(), hidup, setelanCh));
   res.json({ plan: { ...plan, items }, ringkas: summarize(items, plan) });
 }));
 
@@ -328,7 +391,8 @@ router.patch('/api/plan/:id/item/:index', asyncHandler(async (req, res) => {
   writePlans(plans);
 
   const hidup = await channelHidup();
-  res.json({ item: decorateItem(item, plan, videoMap(), hidup) });
+  const setelanCh = groups.setelanChannel();
+  res.json({ item: decorateItem(item, plan, videoMap(), hidup, setelanCh) });
 }));
 
 /**
@@ -366,7 +430,8 @@ router.post('/api/plan/:id/reschedule', asyncHandler(async (req, res) => {
   writePlans(plans);
 
   const hidup = await channelHidup();
-  const items = plan.items.map((item) => decorateItem(item, plan, videoMap(), hidup));
+  const setelanCh = groups.setelanChannel();
+  const items = plan.items.map((item) => decorateItem(item, plan, videoMap(), hidup, setelanCh));
   const masihLewat = items.filter((i) => i.isPast && i.status !== 'sent').length;
   res.json({
     plan: { ...plan, items },
@@ -403,7 +468,10 @@ router.post('/api/plan/:id/caption/:videoId', asyncHandler(async (req, res) => {
   const brief = (req.body?.brief || video.brief || video.title || '').trim();
   if (!brief) throw new HttpError('Video ini belum punya judul atau brief', 400);
 
-  const captions = await ai.generateCaptions({ brief, platforms, title: video.title });
+  // Brand mengikuti grup jadwalnya, bukan environment.
+  const captions = await ai.generateCaptions({
+    brief, platforms, title: video.title, ...groups.brandUntuk(plan.groupId)
+  });
   video.captions = { ...video.captions, ...captions };
   video.brief = brief;
   store.write('videos', videos);
@@ -418,19 +486,36 @@ router.post('/api/plan/:id/send/:index', asyncHandler(async (req, res) => {
   if (!item) throw new HttpError('Item jadwal tidak ditemukan', 404);
 
   const hidup = await channelHidup();
+  const setelanCh = groups.setelanChannel();
 
   if (item.status === 'sent') {
     return res.json({
-      item: decorateItem(item, plan, videoMap(), hidup),
+      item: decorateItem(item, plan, videoMap(), hidup, setelanCh),
       skipped: true,
       reason: 'Sudah terkirim sebelumnya'
     });
   }
 
+  // Gerbang terakhir. Jadwal dan channel bisa berubah grup sesudah jadwalnya
+  // tersimpan, dan sekali post tayang di brand yang salah tidak ada cara
+  // menariknya. Ditolak SEBELUM request ke Buffer — jadi kuota pun tidak
+  // terbakar untuk kesalahan yang sudah ketahuan.
+  const grupJadwal = plan.groupId || groups.bawaanId();
+  const grupCh = grupChannel({ id: item.channelId }, setelanCh);
+  if (grupCh && grupCh !== grupJadwal) {
+    const nama = groups.petaNama();
+    throw new HttpError(
+      `Channel "${item.channelLabel}" milik grup "${nama[grupCh] || grupCh}", ` +
+      `sedangkan jadwal ini milik grup "${nama[grupJadwal] || grupJadwal}". ` +
+      'Post ini tidak dikirim supaya tidak tayang di brand yang salah.',
+      400
+    );
+  }
+
   const video = readVideos().find((v) => v.id === item.videoId);
   if (!video) throw new HttpError('Video untuk item ini sudah dihapus', 400);
 
-  const hashtags = tagsFor(plan.hashtagSetIds, item.platform);
+  const hashtags = tagsFor(plan.hashtagSetIds, item.platform, plan.groupId);
   const { text, metadata, missing, warning } = buildPost({
     platform: item.platform,
     title: video.title,
@@ -449,7 +534,7 @@ router.post('/api/plan/:id/send/:index', asyncHandler(async (req, res) => {
       ? `Belum lengkap: ${missing.join(', ')}`
       : `Belum ada teks untuk ${item.channelLabel}. Generate caption dulu.`;
     writePlans(plans);
-    return res.json({ item: decorateItem(item, plan, videoMap(), hidup), usage: buffer.usageSnapshot() });
+    return res.json({ item: decorateItem(item, plan, videoMap(), hidup, setelanCh), usage: buffer.usageSnapshot() });
   }
 
   // Buffer mengunduh video dari PUBLIC_BASE_URL. Kalau URL-nya tidak bisa
@@ -459,7 +544,7 @@ router.post('/api/plan/:id/send/:index', asyncHandler(async (req, res) => {
     item.status = 'error';
     item.error = `Video tidak bisa diunduh Buffer: ${mediaCheck.reason}`;
     writePlans(plans);
-    return res.json({ item: decorateItem(item, plan, videoMap(), hidup), mediaCheck, usage: buffer.usageSnapshot() });
+    return res.json({ item: decorateItem(item, plan, videoMap(), hidup, setelanCh), mediaCheck, usage: buffer.usageSnapshot() });
   }
 
   const sekarang = req.body?.sekarang === true;
@@ -491,7 +576,7 @@ router.post('/api/plan/:id/send/:index', asyncHandler(async (req, res) => {
   writePlans(plans);
 
   res.json({
-    item: decorateItem(item, plan, videoMap(), hidup),
+    item: decorateItem(item, plan, videoMap(), hidup, setelanCh),
     catatan: catatanKirim,
     usage: buffer.usageSnapshot()
   });
@@ -595,7 +680,8 @@ router.post('/api/plan/:id/sync', asyncHandler(async (req, res) => {
   }
 
   const hidup = await channelHidup();
-  const items = plan.items.map((item) => decorateItem(item, plan, videoMap(), hidup));
+  const setelanCh = groups.setelanChannel();
+  const items = plan.items.map((item) => decorateItem(item, plan, videoMap(), hidup, setelanCh));
   res.json({
     plan: { ...plan, items },
     ringkas: summarize(items, plan),
@@ -613,7 +699,7 @@ router.get('/api/plan/:id/text/:index', asyncHandler(async (req, res) => {
   if (!item) throw new HttpError('Item jadwal tidak ditemukan', 404);
 
   const video = readVideos().find((v) => v.id === item.videoId);
-  const hashtags = tagsFor(plan.hashtagSetIds, item.platform);
+  const hashtags = tagsFor(plan.hashtagSetIds, item.platform, plan.groupId);
   const { text, metadata, missing, warning } = buildPost({
     platform: item.platform,
     title: video?.title || '',

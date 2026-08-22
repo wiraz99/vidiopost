@@ -9,6 +9,7 @@
 import * as api from '../api.js';
 import { el, html, toast, busy, escapeHtml, iconSvg, icon, button, iconButton } from '../utils.js';
 import { PLATFORM_META } from '../config.js';
+import { namaAktif } from '../grup.js';
 
 const PLATFORMS = Object.keys(PLATFORM_META).filter((p) => p !== 'default');
 
@@ -28,7 +29,7 @@ export async function render(view) {
   wrap.append(html('section', 'panel', `
     <div class="panel-head">
       <div>
-        <div class="panel-title">Tautan tersimpan</div>
+        <div class="panel-title">Tautan tersimpan — ${escapeHtml(namaAktif())}</div>
         <p class="muted">Disisipkan otomatis ke post di ${LINK_PLATFORMS.map((p) => PLATFORM_META[p].name).join(', ')}.</p>
       </div>
       <span class="pill-count" id="linkCount">0</span>
@@ -41,7 +42,8 @@ export async function render(view) {
   wrap.append(html('section', 'panel', `
     <div class="panel-title">Cara kerjanya</div>
     <ul class="muted" style="margin:0;padding-left:18px;line-height:1.9">
-      <li>Tautan bertanda <b>utama</b> dipakai kalau sebuah video tidak memilih tautan tertentu.</li>
+      <li>Tautan bertanda <b>utama</b> dipakai kalau sebuah video tidak memilih tautan tertentu — dan hanya untuk video grup yang sama.</li>
+      <li>Tautan milik satu grup tidak akan pernah terpasang di post grup lain, kecuali ditandai <b>semua grup</b>.</li>
       <li>Di halaman <a href="#/stok">Stok Video</a>, tiap video bisa memilih tautannya sendiri.</li>
       <li>Tautan yang dibatasi ke platform tertentu hanya ikut di platform itu.</li>
       <li>TikTok &amp; Instagram tidak disisipi link karena tidak bisa diklik di sana.</li>
@@ -93,8 +95,18 @@ function buildCard(link) {
   const mainCb = el('input');
   mainCb.type = 'checkbox';
   mainCb.checked = !!link.isDefault;
-  mainChip.title = 'Dipakai kalau video tidak memilih tautan sendiri';
+  mainChip.title = 'Dipakai kalau video tidak memilih tautan sendiri. Berlaku per grup.';
   mainChip.append(mainCb, el('span', null, 'utama'));
+
+  // Link toko brand A tidak boleh terpasang di pin brand B. Yang benar-benar
+  // umum (mis. katalog bersama) bisa ditandai berlaku semua grup.
+  const umumChip = el('label', `chip${link.semuaGrup ? ' on' : ''}`);
+  const umumCb = el('input');
+  umumCb.type = 'checkbox';
+  umumCb.checked = !!link.semuaGrup;
+  umumCb.onchange = () => umumChip.classList.toggle('on', umumCb.checked);
+  umumChip.title = 'Kalau dicentang, tautan ini bisa dipakai semua brand — bukan cuma grup ini.';
+  umumChip.append(umumCb, el('span', null, 'semua grup'));
 
   const delBtn = iconButton('trash', 'Hapus tautan', 'icon-btn danger');
   delBtn.onclick = async () => {
@@ -109,7 +121,7 @@ function buildCard(link) {
     }
   };
 
-  actions.append(mainChip, delBtn);
+  actions.append(mainChip, umumChip, delBtn);
   head.append(nameInput, actions);
   card.append(head);
 
@@ -189,7 +201,8 @@ function buildCard(link) {
         url: urlInput.value,
         note: noteInput.value,
         platforms: boxes.filter((c) => c.checked).map((c) => c.dataset.platform),
-        isDefault: mainCb.checked
+        isDefault: mainCb.checked,
+        semuaGrup: umumCb.checked
       });
       Object.assign(link, updated);
       urlInput.value = updated.url;
@@ -216,7 +229,7 @@ function buildCreatePanel() {
     <div class="field-row cols-2">
       <div class="field">
         <label class="lbl" for="newName">Nama</label>
-        <input type="text" id="newName" placeholder="mis. Shopee Arachynana" />
+        <input type="text" id="newName" placeholder="mis. Shopee toko kamu" />
       </div>
       <div class="field">
         <label class="lbl" for="newUrl">Alamat</label>

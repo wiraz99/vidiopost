@@ -14,6 +14,8 @@ const buffer = require('../lib/buffer');
 const ai = require('../lib/ai');
 const { periksaUntukPinterest } = require('../lib/linkcheck');
 const { cariPengganti } = require('../lib/channel-map');
+const groups = require('../lib/groups');
+const { channelTanpaGrup } = require('../lib/group-scope');
 const { resolveLink } = require('./links');
 const { asyncHandler } = require('../lib/http');
 
@@ -118,6 +120,47 @@ router.get('/api/diagnostics', asyncHandler(async (req, res) => {
 
       checks.push(ok('Channel Buffer',
         `${channels.length} channel terbaca (akun A: ${perAkun.A || 0}, akun B: ${perAkun.B || 0}) — sumber: ${source}`));
+
+      // ---------- grup ----------
+      // Channel tanpa grup tidak muncul di grup mana pun, jadi tanpa laporan ini
+      // dia benar-benar tidak terlihat di layar mana pun.
+      const setelanCh = groups.setelanChannel();
+      const belumBergrup = channelTanpaGrup(channels, setelanCh);
+      if (belumBergrup.length) {
+        checks.push(warn('Channel tanpa grup',
+          `${belumBergrup.map((c) => c.label).join(', ')} belum ditetapkan grupnya, jadi belum bisa ` +
+          'dipakai menjadwalkan apa pun.',
+          'Buka Pengaturan → panel Grup, lalu pilih grup untuk channel itu.'));
+      }
+
+      const idGrup = new Set(groups.daftar().map((g) => g.id));
+      const grupHilang = [...new Set(
+        Object.values(setelanCh).map((s) => s?.groupId).filter((g) => g && !idGrup.has(g))
+      )];
+      if (grupHilang.length) {
+        checks.push(bad('Grup sudah tidak ada',
+          `Ada channel yang menunjuk grup ${grupHilang.join(', ')} — grup itu sudah dihapus.`,
+          'Tetapkan ulang grup channel tersebut di Pengaturan.'));
+      }
+
+      // Jadwal yang isinya menunjuk grup berbeda dari grup jadwalnya. Ini yang
+      // akan menayangkan konten brand A di channel brand B kalau diteruskan.
+      const bawaanGrup = groups.bawaanId();
+      const bentrok = [];
+      for (const plan of store.read('plans', [])) {
+        const grupPlan = plan.groupId || bawaanGrup;
+        const salah = (plan.items || []).filter((i) => {
+          const g = setelanCh[i.channelId]?.groupId;
+          return i.status !== 'sent' && g && g !== grupPlan;
+        });
+        if (salah.length) bentrok.push(`${salah.length} item di jadwal ${plan.id}`);
+      }
+      if (bentrok.length) {
+        checks.push(bad('Jadwal mencampur grup',
+          `${bentrok.join('; ')} menunjuk channel milik grup lain — kemungkinan channelnya dipindah ` +
+          'grup setelah jadwalnya dibuat.',
+          'Buka jadwalnya; item itu ditandai belum lengkap dan tidak akan ikut terkirim.'));
+      }
 
       // board Pinterest sudah dipilih?
       const pinterest = channels.filter((c) => c.platform === 'pinterest');

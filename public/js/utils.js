@@ -1,5 +1,7 @@
 import { metaFor } from './config.js';
 import { icon, iconSvg } from './icons.js';
+// grup.js sengaja tidak mengimpor apa pun, jadi ini tidak membuat lingkaran.
+import { namaAktif } from './grup.js';
 
 export { icon, iconSvg };
 
@@ -173,7 +175,7 @@ export function formatRange(from, to) {
 export function setPageTitle(text, sub) {
   const node = document.getElementById('pageTitle');
   if (node) node.textContent = text;
-  document.title = `${text} — Arachynana`;
+  document.title = `${text} — ${namaAktif()}`;
   const subNode = document.getElementById('pageSub');
   if (subNode) {
     subNode.textContent = sub || '';

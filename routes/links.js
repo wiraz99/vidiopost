@@ -5,6 +5,8 @@
  */
 const express = require('express');
 const store = require('../lib/store');
+const groups = require('../lib/groups');
+const { saring, milikGrup } = require('../lib/group-scope');
 const { periksaUntukPinterest } = require('../lib/linkcheck');
 const { asyncHandler, HttpError } = require('../lib/http');
 
@@ -37,16 +39,24 @@ function validate(url) {
 // Pinterest satu-satunya platform yang memakai link sebagai TUJUAN, dan
 // menolak link pendek dengan pesan "Unknown error" yang menyesatkan.
 router.get('/api/links', (req, res) => {
-  const links = readLinks().map((l) => {
-    const { blokir, peringatan } = periksaUntukPinterest(l.url);
-    return { ...l, pinterest: blokir ? { blokir } : peringatan ? { peringatan } : null };
+  const grup = groups.resolusi(req.query.grup);
+  const semua = readLinks();
+  const daftar = grup.semua ? semua : saring(semua, grup.id, groups.bawaanId());
+
+  res.json({
+    groupId: grup.id,
+    grupTidakDikenal: grup.tidakDikenal,
+    links: daftar.map((l) => {
+      const { blokir, peringatan } = periksaUntukPinterest(l.url);
+      return { ...l, pinterest: blokir ? { blokir } : peringatan ? { peringatan } : null };
+    })
   });
-  res.json({ links });
 });
 
 router.post('/api/links', asyncHandler(async (req, res) => {
-  const { name, url, note, platforms, isDefault } = req.body || {};
+  const { name, url, note, platforms, isDefault, groupId, semuaGrup } = req.body || {};
   if (!name?.trim()) throw new HttpError('Nama tautan wajib diisi', 400);
+  if (groupId && !groups.cari(groupId)) throw new HttpError(`Grup "${groupId}" tidak ada.`, 400);
 
   const clean = normalizeUrl(url);
   if (!clean) throw new HttpError('Link wajib diisi', 400);
@@ -56,6 +66,8 @@ router.post('/api/links', asyncHandler(async (req, res) => {
   const link = {
     id: store.uid('lnk'),
     name: name.trim(),
+    groupId: groupId || groups.bawaanId(),
+    semuaGrup: semuaGrup === true,
     url: clean,
     note: (note || '').trim(),
     platforms: Array.isArray(platforms) ? platforms : [],
@@ -64,8 +76,11 @@ router.post('/api/links', asyncHandler(async (req, res) => {
   };
 
   const links = readLinks();
-  // Hanya boleh ada satu tautan default.
-  if (link.isDefault) for (const l of links) l.isDefault = false;
+  // Hanya boleh ada satu tautan utama PER GRUP — tautan utama brand lain tidak
+  // boleh ikut dimatikan, dan tidak boleh ikut terpasang di post grup ini.
+  if (link.isDefault) {
+    for (const l of links) if (milikGrup(l, link.groupId, groups.bawaanId())) l.isDefault = false;
+  }
   links.push(link);
   writeLinks(links);
 
@@ -77,8 +92,13 @@ router.patch('/api/links/:id', asyncHandler(async (req, res) => {
   const link = links.find((l) => l.id === req.params.id);
   if (!link) throw new HttpError('Tautan tidak ditemukan', 404);
 
-  const { name, url, note, platforms, isDefault } = req.body || {};
+  const { name, url, note, platforms, isDefault, groupId, semuaGrup } = req.body || {};
 
+  if (groupId !== undefined) {
+    if (!groups.cari(groupId)) throw new HttpError(`Grup "${groupId}" tidak ada.`, 400);
+    link.groupId = groupId;
+  }
+  if (semuaGrup !== undefined) link.semuaGrup = semuaGrup === true;
   if (name !== undefined) link.name = String(name).trim() || link.name;
   if (url !== undefined) {
     const clean = normalizeUrl(url);
@@ -90,7 +110,12 @@ router.patch('/api/links/:id', asyncHandler(async (req, res) => {
   if (platforms !== undefined) link.platforms = Array.isArray(platforms) ? platforms : [];
   if (isDefault !== undefined) {
     link.isDefault = !!isDefault;
-    if (link.isDefault) for (const l of links) if (l.id !== link.id) l.isDefault = false;
+    if (link.isDefault) {
+      const bawaanId = groups.bawaanId();
+      for (const l of links) {
+        if (l.id !== link.id && milikGrup(l, link.groupId || bawaanId, bawaanId)) l.isDefault = false;
+      }
+    }
   }
 
   writeLinks(links);
@@ -108,11 +133,16 @@ router.delete('/api/links/:id', asyncHandler(async (req, res) => {
 
 /**
  * Tentukan URL yang dipakai sebuah video di platform tertentu.
- * Urutan: tautan yang dipilih video → tautan default → link ketikan bebas.
+ * Urutan: tautan yang dipilih video → tautan utama → link ketikan bebas.
  * Tautan yang dibatasi ke platform lain diabaikan.
+ *
+ * Tautan utama disaring ke grup videonya. Tanpa itu, post brand A bisa membawa
+ * link toko brand B — kesalahan yang tidak muncul di layar mana pun sampai
+ * pin-nya tayang dan mengarahkan orang ke toko yang salah.
  */
 function resolveLink(video, platform) {
   const links = readLinks();
+  const bawaanId = groups.bawaanId();
 
   const usable = (l) => l && (!l.platforms?.length || l.platforms.includes(platform));
 
@@ -122,7 +152,8 @@ function resolveLink(video, platform) {
     if (chosen) return ''; // sengaja dipilih tapi tidak berlaku di platform ini
   }
 
-  const fallback = links.find((l) => l.isDefault);
+  const grupVideo = video?.groupId || bawaanId;
+  const fallback = links.find((l) => l.isDefault && milikGrup(l, grupVideo, bawaanId));
   if (usable(fallback)) return fallback.url;
 
   return video?.link || '';

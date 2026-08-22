@@ -67,12 +67,273 @@ function gambar() {
     </div>
   `));
 
+  page.append(panelGrup());
   page.append(panelUmum());
   page.append(panelChannel());
   page.append(panelKeamanan());
   page.append(panelServer());
 
   view.append(page);
+}
+
+// ================= grup =================
+
+/**
+ * Grup memisahkan brand: video, channel, hashtag dan tautan milik satu grup
+ * tidak akan pernah bisa tercampur dengan grup lain.
+ *
+ * Halaman ini sengaja melihat SEMUA grup sekaligus (bukan cuma yang sedang
+ * aktif) — di sinilah channel ditetapkan grupnya, jadi menyaringnya justru
+ * membuat channel yang belum bergrup mustahil diperbaiki.
+ */
+function panelGrup() {
+  const panel = html('section', 'panel', `
+    <div class="panel-title">Grup</div>
+    <p class="hint">
+      Satu grup = satu brand. Nama brand di sini yang dipakai AI saat menulis caption dan judul.
+      Pindah antar grup lewat pemilih di pojok kiri atas.
+    </p>
+  `);
+
+  const belum = data.channels.filter((c) => !c.groupId);
+  if (belum.length) panel.append(kartuTanpaGrup(belum));
+
+  for (const g of data.groups || []) panel.append(kartuGrup(g));
+
+  panel.append(formGrupBaru());
+  return panel;
+}
+
+/**
+ * Channel tanpa grup. Ini keadaan yang HARUS mencolok: channel seperti ini
+ * tidak masuk grup mana pun, jadi tidak muncul di halaman jadwal sama sekali.
+ * Itu disengaja — supaya channel brand baru tidak diam-diam ikut menerima
+ * konten brand lama — tapi diamnya harus dijelaskan, bukan dibiarkan.
+ */
+function kartuTanpaGrup(belum) {
+  const box = el('div', 'alert alert-warn');
+  const isi = el('div', 'grow');
+
+  isi.append(html('div', null,
+    `<b>${belum.length} channel belum punya grup</b> — belum bisa dipakai menjadwalkan apa pun.`));
+
+  for (const channel of belum) {
+    const baris = el('div', 'row');
+    baris.style.marginTop = '8px';
+
+    const label = el('span', 'grow truncate');
+    label.append(platformDot(channel.platform), el('span', null, ' ' + channel.label));
+
+    const pilih = el('select');
+    pilih.style.maxWidth = '200px';
+    pilih.append(Object.assign(el('option', null, '— pilih grup —'), { value: '' }));
+    for (const g of data.groups || []) {
+      pilih.append(Object.assign(el('option', null, g.name), { value: g.id }));
+    }
+
+    const simpan = button('btn btn-ghost btn-sm', 'check', 'Tetapkan');
+    simpan.onclick = async (e) => {
+      if (!pilih.value) return toast('Pilih grupnya dulu.', 'bad');
+      const done = busy(e.currentTarget, 'Menetapkan…');
+      try {
+        await api.assignChannels(pilih.value, [channel.id]);
+        toast(`${channel.label} masuk grup yang dipilih.`, 'ok');
+        document.dispatchEvent(new CustomEvent('grup-diubah'));
+        await muat();
+      } catch (err) {
+        toast('Gagal: ' + err.message, 'bad');
+        done();
+      }
+    };
+
+    baris.append(label, pilih, simpan);
+    isi.append(baris);
+  }
+
+  box.append(isi);
+  return box;
+}
+
+function kartuGrup(g) {
+  const box = el('div', 'item');
+
+  const head = el('button', 'item-head');
+  head.type = 'button';
+  const chev = icon('chevronDown', 15);
+  chev.classList.add('item-chev');
+
+  const tanda = el('span', 'brand-mark sm');
+  tanda.textContent = (g.name || '?').charAt(0).toUpperCase();
+  if (g.warna) tanda.style.background = g.warna;
+
+  const main = el('span', 'item-main');
+  main.append(el('span', 'item-title truncate', g.name + (g.isDefault ? ' · bawaan' : '')));
+
+  const isi = g.isi || {};
+  const bagian = [
+    [isi.channel, 'channel'], [isi.video, 'video'], [isi.jadwal, 'jadwal'],
+    [isi.hashtag, 'set hashtag'], [isi.tautan, 'tautan']
+  ].filter(([n]) => n > 0).map(([n, nama]) => `${n} ${nama}`);
+
+  main.append(el('span', 'item-sub truncate', bagian.length ? bagian.join(' · ') : 'masih kosong'));
+  head.append(chev, tanda, main);
+  box.append(head);
+
+  const body = el('div', 'item-body');
+  body.hidden = true;
+  box.append(body);
+
+  head.onclick = () => {
+    const buka = body.hidden;
+    body.hidden = !buka;
+    box.classList.toggle('open', buka);
+    if (buka && !body.childElementCount) isiGrup(g, body);
+  };
+
+  return box;
+}
+
+function isiGrup(g, body) {
+  const simpan = async (patch) => {
+    try {
+      const hasil = await api.updateGroup(g.id, patch);
+      Object.assign(g, hasil.group);
+      toast('Tersimpan.', 'ok');
+      document.dispatchEvent(new CustomEvent('grup-diubah'));
+    } catch (err) {
+      toast(`Gagal menyimpan: ${err.message}`, 'bad');
+    }
+  };
+
+  const grid = el('div', 'field-row cols-2');
+  grid.append(fieldTeks({
+    label: 'Nama grup',
+    keterangan: 'Yang muncul di pemilih grup.',
+    value: g.name,
+    onSave: (v) => simpan({ name: v })
+  }));
+  grid.append(fieldTeks({
+    label: 'Nama brand untuk AI',
+    keterangan: 'Dipakai di prompt caption & judul. Biasanya sama dengan nama grup.',
+    value: g.brand || '',
+    onSave: (v) => simpan({ brand: v })
+  }));
+  grid.append(fieldTeks({
+    label: 'Produk',
+    keterangan: 'Contoh: "Sale Pisang Granola". Ini yang membuat caption tiap brand berbeda.',
+    value: g.product || '',
+    onSave: (v) => simpan({ product: v })
+  }));
+  body.append(grid);
+
+  const warnaField = el('div', 'field');
+  warnaField.append(el('label', 'lbl', 'Warna penanda'));
+  const warna = el('input');
+  warna.type = 'color';
+  warna.value = g.warna || '#0f766e';
+  warna.style.maxWidth = '90px';
+  warna.onchange = () => simpan({ warna: warna.value });
+  warnaField.append(warna);
+  warnaField.append(el('p', 'note', 'Dipakai pada kotak inisial di pojok kiri atas.'));
+  body.append(warnaField);
+
+  // Channel milik grup ini, bisa dipindah dari sini.
+  const milik = data.channels.filter((c) => c.groupId === g.id);
+  const chField = el('div', 'field');
+  chField.append(el('label', 'lbl', 'Channel di grup ini'));
+  if (!milik.length) {
+    chField.append(el('p', 'note', 'Belum ada. Tetapkan channel lewat daftar "Per channel" di bawah.'));
+  }
+  for (const channel of milik) {
+    const baris = el('div', 'row');
+    baris.style.marginTop = '6px';
+    const label = el('span', 'grow truncate');
+    label.append(platformDot(channel.platform), el('span', null, ' ' + channel.label));
+    baris.append(label);
+    chField.append(baris);
+  }
+  body.append(chField);
+
+  const aksi = el('div', 'row');
+  aksi.style.marginTop = 'var(--s4)';
+
+  if (!g.isDefault) {
+    const jadikan = button('btn btn-ghost btn-sm', 'check', 'Jadikan grup bawaan');
+    jadikan.onclick = async () => { await simpan({ isDefault: true }); await muat(); };
+    aksi.append(jadikan);
+  }
+
+  const hapus = button('btn btn-ghost btn-sm', 'trash', 'Hapus grup');
+  hapus.classList.add('danger');
+  hapus.onclick = async (e) => {
+    if (!confirm(`Hapus grup "${g.name}"?`)) return;
+    const done = busy(e.currentTarget, 'Menghapus…');
+    try {
+      await api.deleteGroup(g.id);
+      toast('Grup dihapus.', 'ok');
+      document.dispatchEvent(new CustomEvent('grup-diubah'));
+      await muat();
+    } catch (err) {
+      // Server menolak selama grupnya masih dipakai, dan menyebut apa yang
+      // menahannya — pesannya ditampilkan apa adanya karena itu yang berguna.
+      toast(err.message, 'bad');
+      done();
+    }
+  };
+  aksi.append(hapus);
+  body.append(aksi);
+}
+
+function formGrupBaru() {
+  const box = el('div', 'field');
+  box.style.marginTop = 'var(--s4)';
+
+  const buka = button('btn btn-ghost btn-sm', 'plus', 'Tambah grup');
+  box.append(buka);
+
+  const form = el('div', 'field-row cols-2');
+  form.hidden = true;
+  form.style.marginTop = 'var(--s3)';
+
+  const nama = el('input');
+  nama.type = 'text';
+  nama.placeholder = 'Nama grup, mis. Kopi Kita';
+  const produk = el('input');
+  produk.type = 'text';
+  produk.placeholder = 'Produk, mis. Kopi Robusta';
+
+  const bungkusNama = el('div', 'field');
+  bungkusNama.append(el('label', 'lbl', 'Nama grup'), nama);
+  const bungkusProduk = el('div', 'field');
+  bungkusProduk.append(el('label', 'lbl', 'Produk'), produk);
+  form.append(bungkusNama, bungkusProduk);
+
+  const simpan = button('btn btn-primary btn-sm', 'check', 'Buat grup');
+  simpan.style.marginTop = 'var(--s3)';
+  simpan.hidden = true;
+
+  buka.onclick = () => {
+    form.hidden = !form.hidden;
+    simpan.hidden = form.hidden;
+    if (!form.hidden) nama.focus();
+  };
+
+  simpan.onclick = async (e) => {
+    if (!nama.value.trim()) return toast('Nama grup wajib diisi.', 'bad');
+    const done = busy(e.currentTarget, 'Membuat…');
+    try {
+      await api.createGroup({ name: nama.value.trim(), product: produk.value.trim() });
+      toast('Grup dibuat. Tetapkan channelnya lewat daftar "Per channel".', 'ok');
+      document.dispatchEvent(new CustomEvent('grup-diubah'));
+      await muat();
+    } catch (err) {
+      toast('Gagal: ' + err.message, 'bad');
+      done();
+    }
+  };
+
+  box.append(form, simpan);
+  return box;
 }
 
 // ================= setelan umum =================
@@ -293,8 +554,13 @@ function kartuChannel(channel) {
   main.append(el('span', 'item-title truncate', channel.label));
 
   const sub = el('span', 'item-sub truncate');
-  const khusus = Object.keys(channel.tersimpan).length;
+  // groupId ikut terhitung sebagai "setelan sendiri" di data, tapi bukan setelan
+  // tampilan — jadi tidak ikut dihitung supaya angkanya tidak membingungkan.
+  const khusus = Object.keys(channel.tersimpan).filter((k) => k !== 'groupId').length;
+  const grupNama = (data.groups || []).find((g) => g.id === channel.groupId)?.name;
   sub.append(el('span', 'item-channel', `${metaFor(channel.platform).name} · akun ${channel.account}`));
+  sub.append(el('span', grupNama ? null : 'warn-text',
+    grupNama ? ` · grup ${grupNama}` : ' · belum punya grup'));
   sub.append(el('span', null, khusus ? ` — ${khusus} setelan sendiri` : ' — ikut setelan umum'));
   main.append(sub);
 
@@ -330,6 +596,23 @@ function isiChannel(channel, body) {
   };
 
   const grid = el('div', 'field-row cols-2');
+
+  // Grup ditaruh paling depan: ini setelan yang menentukan channel ini boleh
+  // menerima konten siapa, jadi bobotnya jauh di atas jam tayang.
+  grid.append(fieldSelect({
+    label: 'Grup pemilik',
+    keterangan: 'Hanya video dan jadwal grup ini yang boleh dikirim ke channel ini.',
+    value: channel.groupId || '',
+    options: [
+      ['', '— belum ditetapkan —'],
+      ...(data.groups || []).map((g) => [g.id, g.name])
+    ],
+    onSave: async (v) => {
+      await simpan({ groupId: v });
+      document.dispatchEvent(new CustomEvent('grup-diubah'));
+      await muat();
+    }
+  }));
 
   const jam = el('div', 'field');
   jam.append(el('label', 'lbl', 'Jam tayang bawaan'));
@@ -655,6 +938,28 @@ function panelServer() {
 }
 
 // ================= komponen kecil =================
+
+/**
+ * Kolom teks yang menyimpan sendiri. Sengaja disimpan saat FOKUSNYA LEPAS,
+ * bukan tiap ketikan: nama grup yang tersimpan setengah jadi ("Kopi Ki") akan
+ * langsung muncul di pemilih grup dan terlihat seperti kerusakan.
+ */
+function fieldTeks({ label, keterangan, value, onSave }) {
+  const field = el('div', 'field');
+  field.append(el('label', 'lbl', label));
+
+  const input = el('input');
+  input.type = 'text';
+  input.value = value ?? '';
+  input.onchange = () => {
+    if (input.value === (value ?? '')) return;
+    onSave(input.value);
+  };
+  field.append(input);
+
+  if (keterangan) field.append(el('p', 'note', keterangan));
+  return field;
+}
 
 function fieldSelect({ label, keterangan, value, options, onSave }) {
   const field = el('div', 'field');

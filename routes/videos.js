@@ -8,6 +8,8 @@ const fetch = require('node-fetch');
 const store = require('../lib/store');
 const ai = require('../lib/ai');
 const media = require('../lib/media');
+const groups = require('../lib/groups');
+const { saring } = require('../lib/group-scope');
 const { asyncHandler, HttpError } = require('../lib/http');
 
 const router = express.Router();
@@ -46,8 +48,13 @@ const writeVideos = (v) => store.write('videos', v);
 router.post('/api/upload', upload.single('video'), asyncHandler(async (req, res) => {
   if (!req.file) throw new HttpError('No file uploaded', 400);
 
+  // Video langsung menjadi milik grup yang sedang aktif. Tanpa ini video brand
+  // baru mendarat di grup bawaan dan baru ketahuan salah saat menyusun jadwal.
+  const grup = groups.resolusi(req.query.grup === 'semua' ? '' : req.query.grup);
+
   const video = {
     id: store.uid('vid'),
+    groupId: grup.id,
     filename: req.file.filename,
     originalName: req.file.originalname,
     size: req.file.size,
@@ -95,11 +102,17 @@ function jejakPerVideo() {
 
 router.get('/api/videos', (req, res) => {
   const { status } = req.query;
+  const grup = groups.resolusi(req.query.grup);
+  const bawaanId = groups.bawaanId();
+
   const videos = readVideos();
-  const list = status ? videos.filter((v) => v.status === status) : videos;
+  const segrup = grup.semua ? videos : saring(videos, grup.id, bawaanId);
+  const list = status ? segrup.filter((v) => v.status === status) : segrup;
   const jejak = jejakPerVideo();
 
   res.json({
+    groupId: grup.id,
+    grupTidakDikenal: grup.tidakDikenal,
     videos: list.map((v) => {
       const e = jejak.get(v.id) || { terkirim: new Set(), terjadwal: new Set(), gagal: new Set() };
       // Tiap platform hanya boleh muncul sekali, dengan keadaan TERKINI-nya.
@@ -114,12 +127,17 @@ router.get('/api/videos', (req, res) => {
 });
 
 // `link` = URL tujuan, dipakai Pinterest (lihat lib/compose.js).
-const EDITABLE = ['title', 'brief', 'link', 'linkId', 'captions', 'hashtagSetIds', 'status', 'order'];
+const EDITABLE = ['title', 'brief', 'link', 'linkId', 'captions', 'hashtagSetIds', 'status', 'order', 'groupId'];
 
 router.patch('/api/videos/:id', asyncHandler(async (req, res) => {
   const videos = readVideos();
   const video = videos.find((v) => v.id === req.params.id);
   if (!video) throw new HttpError('Video tidak ditemukan', 404);
+
+  // Grup yang tidak ada membuat video hilang dari semua halaman tanpa jejak.
+  if (req.body.groupId !== undefined && !groups.cari(req.body.groupId)) {
+    throw new HttpError(`Grup "${req.body.groupId}" tidak ada.`, 400);
+  }
 
   for (const key of EDITABLE) {
     if (req.body[key] !== undefined) video[key] = req.body[key];
@@ -168,7 +186,13 @@ router.post('/api/videos/:id/suggest-title', asyncHandler(async (req, res) => {
   const brief = (req.body?.brief ?? video.brief ?? '').trim();
   if (!brief) throw new HttpError('Isi brief dulu supaya AI tahu isi videonya', 400);
 
-  const titles = await ai.suggestTitles({ brief, count: req.body?.count || 5 });
+  // Brand diambil dari grup video ini — bukan dari environment. Tanpa ini judul
+  // untuk brand kedua tetap menyebut brand pertama.
+  const titles = await ai.suggestTitles({
+    brief,
+    count: req.body?.count || 5,
+    ...groups.brandUntuk(video.groupId)
+  });
 
   video.brief = brief;
   video.titleSuggestions = titles;
@@ -200,9 +224,11 @@ router.get('/api/ai/test', asyncHandler(async (req, res) => {
 
 // ---------- caption (kontrak lama dipertahankan) ----------
 router.post('/api/caption', asyncHandler(async (req, res) => {
-  const { brief, platforms, title } = req.body || {};
+  const { brief, platforms, title, groupId } = req.body || {};
   if (!Array.isArray(platforms) || !platforms.length) throw new HttpError('platforms kosong', 400);
-  const captions = await ai.generateCaptions({ brief, platforms, title });
+  const captions = await ai.generateCaptions({
+    brief, platforms, title, ...groups.brandUntuk(groupId)
+  });
   res.json({ captions });
 }));
 
